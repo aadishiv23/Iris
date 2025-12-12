@@ -79,31 +79,35 @@ struct SendButton: View {
     // MARK: Body
     
     var body: some View {
-        Button(action: isGenerating ? onStop : onSend) {
-            ZStack {
-                if isEnabled {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.indigo, Color.blue],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .glassEffect()
-                } else {
-                    Circle()
-                        .glassEffect()
-                }
+         Button(action: isGenerating ? onStop : onSend) {
+             ZStack {
+                 Circle()
+                     .fill(.clear)
+                     .glassEffect(
+                         .regular
+                             .tint(buttonTint)
+                             .interactive(isEnabled)
+                     )
 
-                Image(systemName: isGenerating ? "stop.fill" : "arrow.up")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(isEnabled ? .white : .secondary)
-            }
-            .frame(width: 44, height: 44)
-        }
-        .disabled(!isEnabled)
-    }
+                 Image(systemName: isGenerating ? "stop.fill" : "arrow.up")
+                     .font(.system(size: 18, weight: .bold))
+                     .foregroundStyle(isEnabled ? .white : .secondary)
+             }
+             .frame(width: 44, height: 44)
+         }
+         .disabled(!isEnabled)
+     }
+
+     /// Tint color based on current state
+     private var buttonTint: Color {
+         if isGenerating {
+             return .red
+         } else if isEnabled {
+             return .blue
+         } else {
+             return .clear  // No tint when disabled
+         }
+     }
 }
 
 

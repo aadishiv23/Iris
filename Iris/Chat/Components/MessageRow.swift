@@ -55,6 +55,7 @@ struct MessageRow: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }

@@ -7,32 +7,31 @@
 
 import SwiftUI
 
+/// Animated dot indicator shown while the assistant is generating a response.
 struct TypingIndicatorView: View {
-    
-    // MARK: State
-    
-    @State private var phase = 0.0
-    
+
     // MARK: Body
-    
+
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .frame(width: 7, height: 7)
-                    .foregroundStyle(.secondary)
-                    .offset(y: -5 * sin(phase + Double(index) * 0.6))
-                    .opacity(0.5 + 0.5 * sin(phase + Double(index) * 0.6))
+        TimelineView(.animation) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            let speed = 6.0
+
+            HStack(spacing: 6) {
+                ForEach(0..<3, id: \.self) { index in
+                    let phase = time * speed - Double(index) * 0.6
+
+                    Circle()
+                        .frame(width: 7, height: 7)
+                        .foregroundStyle(.secondary)
+                        .offset(y: -3 * sin(phase))
+                        .opacity(0.5 + 0.5 * sin(phase))
+                }
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
         .glassEffect(in: Capsule())
-        .onAppear {
-             withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
-                 phase = .pi * 2
-             }
-         }
     }
 }
 

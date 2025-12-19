@@ -46,10 +46,11 @@ struct GlassInputView: View {
     }
     
     // MARK: Body
-    
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 12) {
             TextField("Message...", text: $text, axis: .vertical)
+                .textFieldStyle(.plain)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .frame(minHeight: 44)
@@ -62,7 +63,12 @@ struct GlassInputView: View {
                         )
                 )
                 .focused(resolvedFocusBinding)
-            
+                .onSubmit {
+                    if !text.isEmpty && !isGenerating {
+                        onSend()
+                    }
+                }
+
             SendButton(
               isGenerating: isGenerating,
               isEnabled: !text.isEmpty || isGenerating,
@@ -104,7 +110,7 @@ struct SendButton: View {
     let onStop: () -> Void
     
     // MARK: Body
-    
+
     var body: some View {
          Button(action: isGenerating ? onStop : onSend) {
              ZStack {
@@ -122,6 +128,7 @@ struct SendButton: View {
              }
              .frame(width: 44, height: 44)
          }
+         .buttonStyle(.plain)
          .disabled(!isEnabled)
      }
 

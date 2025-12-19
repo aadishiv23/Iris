@@ -42,6 +42,9 @@ class MLXService {
     /// Model information presented after loading
     var modelInformation: String?
 
+    /// Short name of the currently loaded model for toolbar display
+    var currentModelShortName: String?
+
     /// Identifier for the model that is currently active in memory.
     private var currentModelIdentifier: String?
 
@@ -104,8 +107,9 @@ class MLXService {
     private func cacheDirectory(for configuration: ModelConfiguration) -> URL? {
         switch configuration.id {
         case .id(let id, _):
-            var url = huggingFaceDownloadBase()
-                .appendingPathComponent(Hub.RepoType.models.rawValue, isDirectory: true)
+            // MLX downloads to: {cachesDir}/models/{org}/{model}/
+            var url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+                .appendingPathComponent("models", isDirectory: true)
 
             for component in id.split(separator: "/") {
                 url.appendPathComponent(String(component), isDirectory: true)
@@ -116,16 +120,6 @@ class MLXService {
         case .directory(let directory):
             return directory
         }
-    }
-
-    private func huggingFaceDownloadBase() -> URL {
-        if let customHome = ProcessInfo.processInfo.environment["HF_HOME"], !customHome.isEmpty {
-            return URL(fileURLWithPath: NSString(string: customHome).expandingTildeInPath)
-        }
-
-        // MLX defaults to the caches directory for Hugging Face downloads (see defaultHubApi in MLXLMCommon).
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return caches.appendingPathComponent("huggingface", isDirectory: true)
     }
 
     private func directoryStats(for url: URL) -> (exists: Bool, size: Int64, modified: Date?) {
@@ -238,6 +232,22 @@ class MLXService {
             case .custom(let id): return id
             }
         }
+
+        /// Short name shown in the toolbar
+        var shortName: String {
+            switch self {
+            case .llama3_2_1B: return "Llama 3.2 1B"
+            case .llama3_2_3B: return "Llama 3.2 3B"
+            case .phi3_5: return "Phi 3.5"
+            case .phi4bit: return "Phi 2 4 bit"
+            case .qwen3_4b_4bit: return "Qwen 3 4B 4bit"
+            case .gemma3n_E2B_it_lm_4bit: return "Gemma 3n E2B"
+            case .gemma3n_E4B_it_lm_4bit: return "Gemma 3n E4B"
+            case .custom(let id):
+                let parts = id.split(separator: "/")
+                return String(parts.last ?? Substring(id))
+            }
+        }
     }
 
     struct CachedModelInfo: Identifiable, Hashable {
@@ -262,26 +272,29 @@ class MLXService {
     /// Loads a model from preset
     func loadModel(_ preset: ModelPreset) async throws {
         loadingModelName = preset.displayName
-        try await loadModel(configuration: preset.configuration)
+        try await loadModel(configuration: preset.configuration, shortName: preset.shortName)
     }
-    
+
     /// Loads a model from given HuggingFace ID.
     func loadModel(hfID: String) async throws {
         let config = ModelConfiguration(id: hfID)
         loadingModelName = hfID
-        try await loadModel(configuration: config)
+        // Extract short name from HF ID (last component)
+        let parts = hfID.split(separator: "/")
+        let shortName = String(parts.last ?? Substring(hfID))
+        try await loadModel(configuration: config, shortName: shortName)
     }
     
     /// Loads a model with the given configuration.
-    func loadModel(configuration: ModelConfiguration) async throws {
+    func loadModel(configuration: ModelConfiguration, shortName: String? = nil) async throws {
         unloadModel()
-        
+
         isLoadingModel = true
         let cached = hasCachedFiles(for: configuration)
         isLoadingFromCache = cached
         statusMessage = cached ? "Preparing cached model..." : "Downloading model..."
         downloadProgress = cached ? 1.0 : 0.0
-                
+
         defer {
             isLoadingModel = false
             loadingModelName = nil
@@ -292,7 +305,7 @@ class MLXService {
             modelContainer = try await LLMModelFactory.shared.loadContainer(
                 configuration: configuration
             ) { [weak self] progress in
-                
+
                 let progressFraction = progress.fractionCompleted
                 Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -305,8 +318,8 @@ class MLXService {
                     }
                 }
             }
-            
-            // Get model informatoin
+
+            // Get model information
             if let container = modelContainer {
                 let numParams = await container.perform { context in
                     context.model.numParameters()
@@ -319,8 +332,9 @@ class MLXService {
                     modelInformation = "\(millions)M parameters"
                 }
             }
-            
+
             isModelLoaded = true
+            currentModelShortName = shortName
             statusMessage = "Model loaded."
             currentModelIdentifier = configurationIdentifier(configuration)
             refreshCachedModels()
@@ -336,6 +350,7 @@ class MLXService {
         modelContainer = nil
         isModelLoaded = false
         modelInformation = nil
+        currentModelShortName = nil
         downloadProgress = 0.0
         isLoadingModel = false
         loadingModelName = nil

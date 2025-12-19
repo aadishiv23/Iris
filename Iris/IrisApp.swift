@@ -33,6 +33,13 @@ struct IrisApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(chatManager: chatManager)
+                #if os(macOS)
+                .frame(minWidth: 700, minHeight: 500)
+                #endif
         }
+        #if os(macOS)
+        .defaultSize(width: 900, height: 700)
+        .windowStyle(.automatic)
+        #endif
     }
 }

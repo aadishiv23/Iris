@@ -51,7 +51,7 @@ struct ChatView: View {
                 )
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .navigation) {
                     Button {
                         chatManager.goHome()
                     } label: {
@@ -59,12 +59,12 @@ struct ChatView: View {
                             .foregroundStyle(.primary)
                     }
                 }
-                
+
                 ToolbarItem(placement: .principal) {
                     modelMenu
                 }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
+
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                       withAnimation {
                           viewModel.newConversation()
@@ -77,9 +77,15 @@ struct ChatView: View {
             }
             .sheet(isPresented: $showSettings) {
                 ChatSettingsView()
+                    #if os(macOS)
+                    .frame(minWidth: 400, minHeight: 300)
+                    #endif
             }
             .sheet(isPresented: $showModelPicker) {
                 ChatModelPickerView(mlxService: chatManager.mlxService)
+                    #if os(macOS)
+                    .frame(minWidth: 450, minHeight: 400)
+                    #endif
             }
         }
         .overlay(alignment: .top) {
@@ -127,22 +133,17 @@ struct ChatView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Text(currentModelName)
-                    .font(.headline)
-                Image(systemName: "chevron.down")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .foregroundStyle(.primary)
+            Text(currentModelName)
+                .font(.headline)
+                .foregroundStyle(.primary)
         }
     }
-    
+
     // MARK: Helpers
-    
+
     private var currentModelName: String {
         if chatManager.mlxService.isModelLoaded {
-            return chatManager.mlxService.modelInformation ?? "Iris"
+            return chatManager.mlxService.currentModelShortName ?? "Model"
         }
         return "No Model"
     }
@@ -163,9 +164,11 @@ struct ChatSettingsView: View {
               Text("Settings coming soon...")
           }
           .navigationTitle("Settings")
+          #if os(iOS)
           .navigationBarTitleDisplayMode(.inline)
+          #endif
           .toolbar {
-              ToolbarItem(placement: .navigationBarTrailing) {
+              ToolbarItem(placement: .confirmationAction) {
                   Button("Done") {
                       dismiss()
                   }
@@ -181,44 +184,90 @@ struct ChatModelPickerView: View {
   let mlxService: MLXService
   @Environment(\.dismiss) private var dismiss
 
+  private var downloadedModels: [MLXService.CachedModelInfo] {
+      mlxService.cachedModels.filter { $0.isDownloaded }
+  }
+
+  private var availableModels: [MLXService.CachedModelInfo] {
+      mlxService.cachedModels.filter { !$0.isDownloaded }
+  }
+
   var body: some View {
       NavigationStack {
           List {
               if mlxService.isLoadingModel {
-                  Section("Loading Model") {
+                  Section("Loading") {
                       HStack {
                           VStack(alignment: .leading, spacing: 4) {
-                              Text("Loading \(mlxService.loadingModelName ?? "model")")
+                              Text(mlxService.loadingModelName ?? "Model")
                                   .font(.headline)
                               Text(mlxService.statusMessage)
                                   .font(.subheadline)
                                   .foregroundStyle(.secondary)
                           }
                           Spacer()
-                          progressView
+                          ProgressView()
                       }
                       .padding(.vertical, 4)
                   }
               }
 
-              Section("Available Models") {
-                  ForEach(MLXService.ModelPreset.allCases, id: \.self) { preset in
-                      Button {
-                          loadModel(preset)
-                      } label: {
-                          HStack {
-                              Text(preset.displayName)
-                                  .foregroundStyle(.primary)
+              if !downloadedModels.isEmpty {
+                  Section("Downloaded") {
+                      ForEach(downloadedModels) { info in
+                          Button {
+                              if let preset = info.preset {
+                                  loadModel(preset)
+                              }
+                          } label: {
+                              HStack {
+                                  VStack(alignment: .leading) {
+                                      Text(info.displayName)
+                                          .foregroundStyle(.primary)
+                                      Text(info.formattedSize)
+                                          .font(.caption)
+                                          .foregroundStyle(.secondary)
+                                  }
 
-                              Spacer()
+                                  Spacer()
 
-                              if mlxService.loadingModelName == preset.displayName,
-                                 mlxService.isLoadingModel {
-                                  ProgressView()
+                                  if mlxService.loadingModelName == info.displayName,
+                                     mlxService.isLoadingModel {
+                                      ProgressView()
+                                  }
                               }
                           }
+                          .disabled(mlxService.isLoadingModel)
                       }
-                      .disabled(mlxService.isLoadingModel)
+                  }
+              }
+
+              if !availableModels.isEmpty {
+                  Section("Available to Download") {
+                      ForEach(availableModels) { info in
+                          Button {
+                              if let preset = info.preset {
+                                  loadModel(preset)
+                              }
+                          } label: {
+                              HStack {
+                                  Text(info.displayName)
+                                      .foregroundStyle(.primary)
+
+                                  Spacer()
+
+                                  if mlxService.loadingModelName == info.displayName,
+                                     mlxService.isLoadingModel {
+                                      ProgressView(value: mlxService.downloadProgress)
+                                          .frame(width: 60)
+                                  } else {
+                                      Image(systemName: "arrow.down.circle")
+                                          .foregroundStyle(.secondary)
+                                  }
+                              }
+                          }
+                          .disabled(mlxService.isLoadingModel)
+                      }
                   }
               }
 
@@ -234,9 +283,11 @@ struct ChatModelPickerView: View {
               }
           }
           .navigationTitle("Switch Model")
+          #if os(iOS)
           .navigationBarTitleDisplayMode(.inline)
+          #endif
           .toolbar {
-              ToolbarItem(placement: .navigationBarTrailing) {
+              ToolbarItem(placement: .cancellationAction) {
                   Button("Cancel") {
                       dismiss()
                   }
@@ -254,18 +305,6 @@ struct ChatModelPickerView: View {
               print("Failed to load model: \(error)")
           }
       }
-  }
-
-  private var progressView: some View {
-      Group {
-          if mlxService.downloadProgress > 0 {
-              ProgressView(value: mlxService.downloadProgress)
-                  .frame(width: 80)
-          } else {
-              ProgressView()
-          }
-      }
-      .progressViewStyle(.circular)
   }
 }
 

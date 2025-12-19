@@ -12,6 +12,8 @@ struct ChatConversationView: View {
     
     // MARK: Properties
     
+    @FocusState private var isInputFocused: Bool
+
     /// The list of messages to be displayed.
     let messages: [Message]
     
@@ -32,9 +34,6 @@ struct ChatConversationView: View {
     /// Whether to show the scroll-to-bottom button
     @State private var showScrollButton = false
 
-    /// Tracks scroll position
-    @State private var scrollOffset: CGFloat = 0
-
     // MARK: Body
 
     var body: some View {
@@ -44,7 +43,11 @@ struct ChatConversationView: View {
             GlassInputView(
                 text: $inputText,
                 isGenerating: isGenerating,
-                onSend: onSend,
+                focusBinding: $isInputFocused,
+                onSend: {
+                    onSend()
+                    isInputFocused = false // dismiss keyboard
+                },
                 onStop: onStop
             )
         }
@@ -55,63 +58,73 @@ struct ChatConversationView: View {
     
     private var messageList: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 18) {
-                    ForEach(messages) { message in
-                        MessageRow(message: message)
-                    }
-                    
-                    if isGenerating && messages.last?.role == .assistant && messages.last?.content.isEmpty == true {
-                        TypingIndicatorView()
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .transition(.opacity)
-                    }
-                    
-                    // Invisilbe view to scroll to at bottom
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom")
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear
-                                    .preference(
-                                        key: ScrollOffsetKey.self,
-                                        value: geo.frame(in: .named("scroll")).minY
+            GeometryReader { scrollGeo in
+                ScrollView {
+                    LazyVStack(spacing: 18) {
+                        ForEach(messages) { message in
+                            MessageRow(message: message)
+                                .transition(
+                                    .asymmetric(
+                                        insertion: .scale(scale: 0.9)
+                                            .combined(with: .opacity)
+                                            .combined(with: .move(edge: .bottom)),
+                                        removal: .opacity
                                     )
-                            }
-                        )
+                                )
+                        }
+                        
+                        if isGenerating && messages.last?.role == .assistant && messages.last?.content.isEmpty == true {
+                            TypingIndicatorView()
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .transition(.opacity)
+                        }
+                        
+                        // Invisible view to scroll to at bottom
+                        Color.clear
+                            .frame(height: 1)
+                            .id("bottom")
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear
+                                        .preference(
+                                            key: ScrollOffsetKey.self,
+                                            value: geo.frame(in: .named("scroll")).minY
+                                        )
+                                }
+                            )
+                    }
+                    .padding(.vertical, 24)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 50)
                 }
-                .padding(.vertical, 24)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 50)
+                .coordinateSpace(name: "scroll")
+                .scrollIndicators(.hidden)
+                .onPreferenceChange(ScrollOffsetKey.self) { bottomMinY in
+                    let distanceFromBottom = max(0, bottomMinY - scrollGeo.size.height)
+                    let shouldShow = distanceFromBottom > 80
+                    if shouldShow != showScrollButton {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showScrollButton = shouldShow
+                        }
+                    }
+                }
+                .onChange(of: messages.count) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
+                .onChange(of: messages.last?.content) { _, _ in
+                    scrollToBottom(proxy: proxy)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if showScrollButton {
+                        ScrollToBottomButton {
+                            scrollToBottom(proxy: proxy)
+                        }
+                        .padding(.trailing, 14)
+                        .padding(.bottom, 80)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
             }
-            .coordinateSpace(name: "scroll")
-            .scrollIndicators(.hidden)
-            .onPreferenceChange(ScrollOffsetKey.self) { offset in
-                 let threshold: CGFloat = 500
-                 let shouldShow = offset < threshold
-                 if shouldShow != showScrollButton {
-                     withAnimation(.easeInOut(duration: 0.2)) {
-                         showScrollButton = shouldShow
-                     }
-                 }
-             }
-             .onChange(of: messages.count) { _, _ in
-                 scrollToBottom(proxy: proxy)
-             }
-             .onChange(of: messages.last?.content) { _, _ in
-                 scrollToBottom(proxy: proxy)
-             }
-             .overlay(alignment: .bottomTrailing) {
-                 if showScrollButton {
-                     ScrollToBottomButton {
-                         scrollToBottom(proxy: proxy)
-                     }
-                     .padding(.trailing, 14)
-                     .padding(.bottom, 80)
-                     .transition(.scale.combined(with: .opacity))
-                 }
-             }
         }
     }
     

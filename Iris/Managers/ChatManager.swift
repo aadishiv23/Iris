@@ -32,6 +32,10 @@ class ChatManager {
     /// State tracking whether a generation is in progress.
     var isGenerating = false
     
+    // MARK: - Dependencies
+    
+    let mlxService: MLXService
+    
     // MARK: - Private Properties
     
     /// The ID of conversation currently generating.
@@ -39,10 +43,6 @@ class ChatManager {
     
     /// Current generation task stored for cancellation.
     private var generationTask: Task<Void, Never>?
-    
-    // MARK: - Dependencies
-    
-    private let mlxService: MLXService
     
     // MARK: - Init
     
@@ -130,6 +130,14 @@ class ChatManager {
         conversationId: UUID,
         assistantMessageId: UUID
     ) async {
+        defer {
+            if generatingConversationID == conversationId {
+                isGenerating = false
+                generatingConversationID = nil
+                generationTask = nil
+            }
+        }
+        
         guard let index = conversations.firstIndex(where: { $0.id == conversationId }) else {
             isGenerating = false
             return

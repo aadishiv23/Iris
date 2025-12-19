@@ -17,17 +17,33 @@ struct GlassInputView: View {
     /// The text the user is sending to the assistant with binding to parent.
     @Binding var text: String
     
-    /// Tracks whether the text-field is keyboard focused and whether to highlight.
-    @FocusState var isFocused: Bool
-    
     /// Whether the asisstant is generating a response.
     let isGenerating: Bool
+
+    /// Optional binding to the parent's focus state.
+    let focusBinding: FocusState<Bool>.Binding?
+    
+    @FocusState private var fallbackFocus: Bool
     
     /// Called when the user sends a message.
     let onSend: () -> Void
     
     /// Called when the user taps the stop button during generation.
     let onStop: () -> Void
+    
+    init(
+        text: Binding<String>,
+        isGenerating: Bool,
+        focusBinding: FocusState<Bool>.Binding? = nil,
+        onSend: @escaping () -> Void,
+        onStop: @escaping () -> Void
+    ) {
+        self._text = text
+        self.isGenerating = isGenerating
+        self.focusBinding = focusBinding
+        self.onSend = onSend
+        self.onStop = onStop
+    }
     
     // MARK: Body
     
@@ -37,12 +53,15 @@ struct GlassInputView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .frame(minHeight: 44)
-                .glassEffect(in: Capsule())
+                .glassEffect(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(
-                    Capsule()
-                        .stroke(isFocused ? Color.indigo.opacity(0.5) : Color.white.opacity(0.5), lineWidth: 2)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(
+                            isFieldFocused ? Color.indigo.opacity(0.5) : Color.white.opacity(0.5),
+                            lineWidth: 1
+                        )
                 )
-                .focused($isFocused)
+                .focused(resolvedFocusBinding)
             
             SendButton(
               isGenerating: isGenerating,
@@ -54,6 +73,14 @@ struct GlassInputView: View {
         .padding(.horizontal, 12)
         .padding(.top, 10)
         .padding(.bottom, 6)
+    }
+
+    private var resolvedFocusBinding: FocusState<Bool>.Binding {
+        focusBinding ?? $fallbackFocus
+    }
+
+    private var isFieldFocused: Bool {
+        focusBinding?.wrappedValue ?? fallbackFocus
     }
 }
 
@@ -132,17 +159,13 @@ struct SendButton: View {
 }
 
 #Preview("Focused") {
-     @Previewable @FocusState var isFocused: Bool
-
-     GlassInputView(
-         text: .constant(""),
-         isFocused: _isFocused,
-         isGenerating: false,
-         onSend: {},
-         onStop: {}
-     )
-     .onAppear { isFocused = true }
- }
+    GlassInputView(
+        text: .constant(""),
+        isGenerating: false,
+        onSend: {},
+        onStop: {}
+    )
+}
 
 #Preview("Generating") {
     GlassInputView(

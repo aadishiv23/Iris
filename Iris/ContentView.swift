@@ -7,18 +7,41 @@
 
 import SwiftUI
 
+/// Root view that routes between HomeView and ChatView based on active conversation.
 struct ContentView: View {
+
+    // MARK: - Properties
+
+    /// The ChatManager
+    let chatManager: ChatManager
+
+    // MARK: - Body
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            if chatManager.activeConversationID != nil {
+                ChatView(chatManager: chatManager)
+            } else {
+                HomeView(chatManager: chatManager)
+            }
         }
-        .padding()
+        .animation(.easeInOut(duration: 0.2), value: chatManager.activeConversationID)
     }
 }
 
-#Preview {
-    ContentView()
+// MARK: - Previews
+
+//#Preview("With Active Conversation") {
+//    let mlxService = MLXService()
+//    let chatManager = ChatManager(mlxService: mlxService)
+//    chatManager.createNewConversation()
+//
+//    ContentView(chatManager: chatManager)
+//}
+
+#Preview("Home") {
+    let mlxService = MLXService()
+    let chatManager = ChatManager(mlxService: mlxService)
+
+    ContentView(chatManager: chatManager)
 }

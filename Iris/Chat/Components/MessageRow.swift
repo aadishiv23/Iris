@@ -18,12 +18,14 @@ struct MessageRow: View {
     // MARK: View
     
     var body: some View {
+        let trimmedContent = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        
         HStack(alignment: .bottom, spacing: 10) {
             if message.role == .user {
                 Spacer(minLength: 40)
                 
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text(message.content)
+                    Text(trimmedContent)
                         .font(.body)
                         .foregroundStyle(.white)
                         .padding(.horizontal, 18)
@@ -45,8 +47,8 @@ struct MessageRow: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    if !message.content.isEmpty {
-                        Text(message.content)
+                    if !trimmedContent.isEmpty {
+                        Text(trimmedContent)
                             .font(.body)
                             .foregroundStyle(.primary)
                         

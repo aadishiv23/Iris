@@ -133,9 +133,19 @@ struct ChatView: View {
                 }
             }
         } label: {
+            #if os(iOS)
+            HStack(spacing: 4) {
+                Text(currentModelName)
+                    .font(.headline)
+                Image(systemName: "chevron.down")
+                    .font(.caption)
+            }
+            .foregroundStyle(.primary)
+            #else
             Text(currentModelName)
                 .font(.headline)
                 .foregroundStyle(.primary)
+            #endif
         }
     }
 

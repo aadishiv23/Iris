@@ -7,6 +7,7 @@
 
 import Foundation
 import Observation
+import SwiftUI
 
 @Observable
 @MainActor
@@ -105,13 +106,17 @@ class ChatManager {
             cancelGeneration()
         }
         
-        // Add user message
+        // Add user message with animation
         let userMessage = Message(role: .user, content: text)
-        conversations[index].messages.append(userMessage)
-        
-        // Add placeholder assistant message
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            conversations[index].messages.append(userMessage)
+        }
+
+        // Add placeholder assistant message with animation
         let assistantMessage = Message(role: .assistant, content: "")
-        conversations[index].messages.append(assistantMessage)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            conversations[index].messages.append(assistantMessage)
+        }
         let assistantMessageId = assistantMessage.id
         
         // Start generation

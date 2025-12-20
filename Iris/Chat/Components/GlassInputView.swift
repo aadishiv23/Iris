@@ -127,6 +127,7 @@ struct SendButton: View {
                      .foregroundStyle(isEnabled ? .white : .secondary)
              }
              .frame(width: 44, height: 44)
+             .contentShape(Circle())
          }
          .buttonStyle(.plain)
          .disabled(!isEnabled)

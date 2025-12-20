@@ -285,12 +285,14 @@ extension Color {
     }
 }
 
-// MARK: - Model Manager (Unchanged)
+// MARK: - Model Manager
 
 struct ModelManagerView: View {
     @Environment(\.dismiss) private var dismiss
     let mlxService: MLXService
     @State private var errorMessage: String?
+    @State private var modelToDelete: MLXService.CachedModelInfo?
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -303,6 +305,18 @@ struct ModelManagerView: View {
                         Text(formatSize(mlxService.cachedModels))
                             .fontWeight(.bold)
                             .foregroundStyle(.indigo)
+                    }
+                }
+
+                if let errorMessage {
+                    Section {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text(errorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
@@ -321,11 +335,24 @@ struct ModelManagerView: View {
                                 Text(info.formattedSize)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .padding(.trailing, 8)
+
+                                Button {
+                                    modelToDelete = info
+                                    showDeleteConfirmation = true
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.borderless)
                             }
                         }
                         .swipeActions {
                             if info.isDownloaded {
-                                Button(role: .destructive) { try? mlxService.deleteCachedModel(info) } label: {
+                                Button(role: .destructive) {
+                                    modelToDelete = info
+                                    showDeleteConfirmation = true
+                                } label: {
                                     Label("Delete", systemImage: "trash")
                                 }
                             }
@@ -342,7 +369,29 @@ struct ModelManagerView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .alert("Delete Model", isPresented: $showDeleteConfirmation, presenting: modelToDelete) { model in
+                Button("Cancel", role: .cancel) {
+                    modelToDelete = nil
+                }
+                Button("Delete", role: .destructive) {
+                    deleteModel(model)
+                }
+            } message: { model in
+                Text("Are you sure you want to delete \"\(model.displayName)\"? This will free up \(model.formattedSize) of storage.")
+            }
         }
+    }
+
+    private func deleteModel(_ model: MLXService.CachedModelInfo) {
+        errorMessage = nil
+        do {
+            try mlxService.deleteCachedModel(model)
+        } catch MLXError.modelInUse {
+            errorMessage = "Cannot delete \"\(model.displayName)\" because it is currently loaded. Unload it first."
+        } catch {
+            errorMessage = "Failed to delete model: \(error.localizedDescription)"
+        }
+        modelToDelete = nil
     }
 
     func formatSize(_ models: [MLXService.CachedModelInfo]) -> String {

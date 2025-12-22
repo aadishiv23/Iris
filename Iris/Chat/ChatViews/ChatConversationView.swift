@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 /// Scrollable chat transcript with messages, typing indicator, and input field.
 struct ChatConversationView: View {
@@ -22,12 +23,23 @@ struct ChatConversationView: View {
     
     /// Text input binding
     @Binding var inputText: String
+    
+    /// Images selected for the next message,
+    @Binding var pendingImages: [PendingImage]
 
     /// Called when user sends a message
     let onSend: () -> Void
 
     /// Called when user stops generation
     let onStop: () -> Void
+    
+    /// Called when the user picks new images.
+    /// `items`: Newly selected `PhotosPickerItem` values
+    let onPickImages: ([PhotosPickerItem]) -> Void
+    
+    /// Called to remove a selected image.
+    /// `id`: The pending image id to remove.
+    let onRemoveImage: (UUID) -> Void
 
     // MARK: Private State
 
@@ -42,13 +54,16 @@ struct ChatConversationView: View {
 
             GlassInputView(
                 text: $inputText,
+                pendingImages: $pendingImages,
                 isGenerating: isGenerating,
                 focusBinding: $isInputFocused,
                 onSend: {
                     onSend()
                     isInputFocused = false // dismiss keyboard
                 },
-                onStop: onStop
+                onStop: onStop,
+                onPickImages: onPickImages,
+                onRemoveImage: onRemoveImage
             )
         }
 
@@ -182,9 +197,12 @@ struct ChatConversationView: View {
      ChatConversationView(
          messages: [],
          isGenerating: false,
-         inputText: .constant(""),
+         inputText: Binding.constant(""),
+         pendingImages: Binding.constant([]),
          onSend: {},
          onStop: {}
+        , onPickImages: { _ in }
+        , onRemoveImage: { _ in }
      )
  }
 
@@ -197,9 +215,12 @@ struct ChatConversationView: View {
              Message(role: .assistant, content: "SwiftUI is Apple's modern declarative framework for building user interfaces across all Apple platforms.")
          ],
          isGenerating: false,
-         inputText: .constant(""),
+         inputText: Binding.constant(""),
+         pendingImages: Binding.constant([]),
          onSend: {},
          onStop: {}
+        , onPickImages: { _ in }
+        , onRemoveImage: { _ in }
      )
  }
 
@@ -212,9 +233,12 @@ struct ChatConversationView: View {
              )
          },
          isGenerating: false,
-         inputText: .constant(""),
+         inputText: Binding.constant(""),
+         pendingImages: Binding.constant([]),
          onSend: {},
          onStop: {}
+        , onPickImages: { _ in }
+        , onRemoveImage: { _ in }
      )
  }
 
@@ -225,9 +249,12 @@ struct ChatConversationView: View {
              Message(role: .assistant, content: "")
          ],
          isGenerating: true,
-         inputText: .constant(""),
+         inputText: Binding.constant(""),
+         pendingImages: Binding.constant([]),
          onSend: {},
          onStop: {}
+        , onPickImages: { _ in }
+        , onRemoveImage: { _ in }
      )
  }
 
@@ -238,9 +265,13 @@ struct ChatConversationView: View {
              Message(role: .assistant, content: "Hi! How can I help?")
          ],
          isGenerating: false,
-         inputText: .constant("Test"),
+         inputText: Binding.constant("Test"),
+         pendingImages: Binding.constant([]),
          onSend: {},
          onStop: {}
+        , onPickImages: { _ in }
+        , onRemoveImage: { _ in }
      )
      .preferredColorScheme(.dark)
  }
+

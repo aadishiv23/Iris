@@ -46,8 +46,19 @@ struct ChatView: View {
                     messages: viewModel.messages,
                     isGenerating: viewModel.isGeneratingResponse,
                     inputText: $viewModel.inputText,
+                    pendingImages: $viewModel.pendingImages,
                     onSend: { viewModel.sendMessage() },
-                    onStop: { viewModel.stopGeneration()}
+                    onStop: { viewModel.stopGeneration()},
+                    onPickImages: { items in
+                        Task {
+                            await viewModel.addPickedItems(items)
+                        }
+                    },
+                    onRemoveImage: { id in
+                        Task {
+                            await viewModel.removePendingImage(id)
+                        }
+                    }
                 )
             }
             .toolbar {

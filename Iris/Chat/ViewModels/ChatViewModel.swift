@@ -6,6 +6,11 @@
 //
 
 import Foundation
+import PhotosUI
+import SwiftUI
+import UniformTypeIdentifiers
+import UIKit
+import _PhotosUI_SwiftUI
 
 @Observable
 @MainActor
@@ -14,6 +19,9 @@ class ChatViewModel {
     
     /// The text the user will send to the model.
     var inputText = ""
+    
+    /// Images selected by the user but not sent yet.
+    var pendingImages: [PendingImage] = []
     
     // MARK: - Dependencies
     
@@ -58,5 +66,35 @@ class ChatViewModel {
 
     func newConversation() {
         chatManager.createNewConversation()
+    }
+    
+    // MARK: - Attachment/Image Methods
+    
+    /// Add newly selected image items to the pending list.
+    /// - Parameters:
+    ///    - items: The `PhotoPickerItem` item list chosen by the user.
+    func addPickedItems(_ items: [PhotosPickerItem]) async {
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data)
+            else { continue }
+            
+            let mimeType = item.supportedContentTypes.first?.preferredMIMEType ?? "image/png"
+            pendingImages.append(
+                PendingImage(
+                    image: image,
+                    data: data,
+                    mimeType: mimeType
+                )
+            )
+        }
+    }
+    
+    /// Removes a pending image by id.
+    /// - Parameter id: The identifier of the pending image to remove.
+    func removePendingImage(_ id: UUID) {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            pendingImages.removeAll { $0.id == id }
+        }
     }
 }

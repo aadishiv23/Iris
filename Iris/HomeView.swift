@@ -86,6 +86,15 @@ struct HomeView: View {
                             .foregroundStyle(.primary)
                     }
                 }
+
+                ToolbarItem(placement: .primaryAction) {
+                    NavigationLink {
+                        SandboxView()
+                    } label: {
+                        Image(systemName: "wrench.and.screwdriver")
+                            .foregroundStyle(.primary)
+                    }
+                }
             }
             .sheet(isPresented: $showModelManager) {
                 ModelManagerView(mlxService: chatManager.mlxService)

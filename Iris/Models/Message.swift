@@ -25,6 +25,9 @@ struct Message: Codable, Identifiable {
     /// The content of the given message.
     /// Currently, it is to be a String. However, in future, this could likely be converted to a custom type that can support different information.
     let content: String
+
+    /// Attachments associated with the message (e.g. images).
+    let attachments: [MessageAttachment]
     
     /// The timestamp that this message was delivered.
     let timestamp: Date
@@ -33,11 +36,37 @@ struct Message: Codable, Identifiable {
         id: UUID = UUID(),
         role: MessageRole,
         content: String,
+        attachments: [MessageAttachment] = [],
         timestamp: Date = Date()
     ) {
         self.id = id
         self.role = role
         self.content = content
+        self.attachments = attachments
         self.timestamp = timestamp
+    }
+}
+
+/// Attachment payloads that can be sent with a message.
+struct MessageAttachment: Codable, Identifiable {
+    enum AttachmentType: String, Codable {
+        case image
+    }
+
+    let id: UUID
+    let type: AttachmentType
+    let data: Data
+    let mimeType: String
+
+    init(
+        id: UUID = UUID(),
+        type: AttachmentType,
+        data: Data,
+        mimeType: String
+    ) {
+        self.id = id
+        self.type = type
+        self.data = data
+        self.mimeType = mimeType
     }
 }

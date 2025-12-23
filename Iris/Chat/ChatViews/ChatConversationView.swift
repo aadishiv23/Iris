@@ -96,7 +96,7 @@ struct ChatConversationView: View {
                         
                         // Invisible view to scroll to at bottom
                         Color.clear
-                            .frame(height: 1)
+                            .frame(height: 20)
                             .id("bottom")
                             .background(
                                 GeometryReader { geo in
@@ -108,9 +108,9 @@ struct ChatConversationView: View {
                                 }
                             )
                     }
-                    .padding(.vertical, 24)
+                    .padding(.top, 8)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 50)
+                    .padding(.bottom, 100)
                 }
                 .coordinateSpace(name: "scroll")
                 .scrollIndicators(.hidden)
@@ -124,10 +124,11 @@ struct ChatConversationView: View {
                     }
                 }
                 .onChange(of: messages.count) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                    scrollToBottom(proxy: proxy, animated: true)
                 }
                 .onChange(of: messages.last?.content) { _, _ in
-                    scrollToBottom(proxy: proxy)
+                    // No animation during streaming to prevent jitter
+                    scrollToBottom(proxy: proxy, animated: false)
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if showScrollButton {
@@ -146,8 +147,12 @@ struct ChatConversationView: View {
     
     // MARK: Helpers
 
-    private func scrollToBottom(proxy: ScrollViewProxy) {
-        withAnimation(.easeOut(duration: 0.3)) {
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
+        if animated {
+            withAnimation(.easeOut(duration: 0.3)) {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+        } else {
             proxy.scrollTo("bottom", anchor: .bottom)
         }
     }

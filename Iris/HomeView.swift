@@ -302,6 +302,7 @@ struct ModelManagerView: View {
     @State private var errorMessage: String?
     @State private var modelToDelete: MLXService.CachedModelInfo?
     @State private var showDeleteConfirmation = false
+    @State private var showClearCacheConfirmation = false
 
     var body: some View {
         NavigationStack {
@@ -340,6 +341,11 @@ struct ModelManagerView: View {
                                     .foregroundStyle(info.isDownloaded ? .green : .secondary)
                             }
                             Spacer()
+                            if info.preset?.supportsImages == true {
+                                Image(systemName: "camera.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             if info.isDownloaded {
                                 Text(info.formattedSize)
                                     .font(.caption)
@@ -368,6 +374,14 @@ struct ModelManagerView: View {
                         }
                     }
                 }
+
+                Section {
+                    Button(role: .destructive) {
+                        showClearCacheConfirmation = true
+                    } label: {
+                        Label("Clear Model Cache", systemImage: "trash.slash")
+                    }
+                }
             }
             .navigationTitle("Models")
             #if os(iOS)
@@ -388,6 +402,14 @@ struct ModelManagerView: View {
             } message: { model in
                 Text("Are you sure you want to delete \"\(model.displayName)\"? This will free up \(model.formattedSize) of storage.")
             }
+            .alert("Clear Model Cache", isPresented: $showClearCacheConfirmation) {
+                Button("Cancel", role: .cancel) {}
+                Button("Clear", role: .destructive) {
+                    clearModelCache()
+                }
+            } message: {
+                Text("This removes all downloaded models from local storage.")
+            }
         }
     }
 
@@ -401,6 +423,17 @@ struct ModelManagerView: View {
             errorMessage = "Failed to delete model: \(error.localizedDescription)"
         }
         modelToDelete = nil
+    }
+
+    private func clearModelCache() {
+        errorMessage = nil
+        do {
+            try mlxService.clearCachedModels()
+        } catch MLXError.modelInUse {
+            errorMessage = "Cannot clear the cache while a model is loaded. Unload it first."
+        } catch {
+            errorMessage = "Failed to clear model cache: \(error.localizedDescription)"
+        }
     }
 
     func formatSize(_ models: [MLXService.CachedModelInfo]) -> String {

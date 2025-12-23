@@ -50,14 +50,22 @@ class ChatViewModel {
     var hasMessages: Bool {
         !messages.isEmpty
     }
+
+    var alertMessage: String? {
+        chatManager.alertMessage
+    }
     
     // MARK: - Actions (delegate to ChatManager)
 
     func sendMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        chatManager.sendMessage(text)
+        guard !text.isEmpty || !pendingImages.isEmpty else { return }
+        let attachments = pendingImages.map {
+            MessageAttachment(type: .image, data: $0.data, mimeType: $0.mimeType)
+        }
+        chatManager.sendMessage(text, attachments: attachments)
         inputText = ""
+        pendingImages = []
     }
 
     func stopGeneration() {
@@ -66,6 +74,10 @@ class ChatViewModel {
 
     func newConversation() {
         chatManager.createNewConversation()
+    }
+
+    func clearAlert() {
+        chatManager.alertMessage = nil
     }
     
     // MARK: - Attachment/Image Methods

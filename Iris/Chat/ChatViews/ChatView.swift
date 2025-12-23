@@ -55,9 +55,7 @@ struct ChatView: View {
                         }
                     },
                     onRemoveImage: { id in
-                        Task {
-                            await viewModel.removePendingImage(id)
-                        }
+                        viewModel.removePendingImage(id)
                     }
                 )
             }
@@ -111,6 +109,16 @@ struct ChatView: View {
                 .padding(.top, 48)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
+        }
+        .alert("Notice", isPresented: Binding(
+            get: { viewModel.alertMessage != nil },
+            set: { if !$0 { viewModel.clearAlert() } }
+        )) {
+            Button("OK") {
+                viewModel.clearAlert()
+            }
+        } message: {
+            Text(viewModel.alertMessage ?? "")
         }
         .onChange(of: chatManager.mlxService.isLoadingModel) { _, isLoading in
             if isLoading {
@@ -252,6 +260,12 @@ struct ChatModelPickerView: View {
 
                                   Spacer()
 
+                                  if info.preset?.supportsImages == true {
+                                      Image(systemName: "camera.fill")
+                                          .font(.caption)
+                                          .foregroundStyle(.secondary)
+                                  }
+
                                   if mlxService.loadingModelName == info.displayName,
                                      mlxService.isLoadingModel {
                                       ProgressView()
@@ -276,6 +290,12 @@ struct ChatModelPickerView: View {
                                       .foregroundStyle(.primary)
 
                                   Spacer()
+
+                                  if info.preset?.supportsImages == true {
+                                      Image(systemName: "camera.fill")
+                                          .font(.caption)
+                                          .foregroundStyle(.secondary)
+                                  }
 
                                   if mlxService.loadingModelName == info.displayName,
                                      mlxService.isLoadingModel {
@@ -378,7 +398,18 @@ struct ModelLoadingPopup: View {
 
 extension MLXService.ModelPreset: CaseIterable {
     public static var allCases: [MLXService.ModelPreset] {
-        [.llama3_2_1B, .llama3_2_3B, .phi3_5, .phi4bit, .qwen3_4b_4bit, .gemma3n_E2B_it_lm_4bit, .gemma3n_E4B_it_lm_4bit]
+        [
+            .llama3_2_1B,
+            .llama3_2_3B,
+            .phi3_5,
+            .phi4bit,
+            .qwen3_4b_4bit,
+            .gemma3n_E2B_it_lm_4bit,
+            .gemma3n_E4B_it_lm_4bit,
+            .gemma3n_E2B_4bit,
+            .gemma3n_E2B_3bit
+            ,.qwen3_VL_4B_instruct_4bit
+        ]
     }
 }
 

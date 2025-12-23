@@ -32,6 +32,9 @@ class ChatManager {
     
     /// State tracking whether a generation is in progress.
     var isGenerating = false
+
+    /// User-facing alert message for chat warnings.
+    var alertMessage: String?
     
     // MARK: - Dependencies
     
@@ -94,8 +97,15 @@ class ChatManager {
     
     // MARK: - Message Handling
     
-    func sendMessage(_ text: String) {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+    func sendMessage(_ text: String, attachments: [MessageAttachment]) {
+        let supportsImages = mlxService.currentPreset?.supportsImages == true
+        let filteredAttachments = supportsImages ? attachments : []
+
+        if !supportsImages && !attachments.isEmpty {
+            alertMessage = "Images are only supported with Gemma 3n models."
+        }
+        
+        guard (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !filteredAttachments.isEmpty),
               let conversationId = activeConversationID,
               let index = conversations.firstIndex(where: { $0.id == conversationId }) else {
             return
@@ -107,7 +117,7 @@ class ChatManager {
         }
         
         // Add user message with animation
-        let userMessage = Message(role: .user, content: text)
+        let userMessage = Message(role: .user, content: text, attachments: filteredAttachments)
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
             conversations[index].messages.append(userMessage)
         }

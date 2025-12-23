@@ -6,6 +6,8 @@
 //
 
 import Foundation
+import CoreImage
+import UIKit
 import MLX
 import MLXNN
 import MLXLLM
@@ -47,6 +49,9 @@ class MLXService {
 
     /// Identifier for the model that is currently active in memory.
     private var currentModelIdentifier: String?
+    
+    /// Currently loaded preset (only set when loading from a preset).
+    private(set) var currentPreset: ModelPreset?
 
     // MARK: - Private Properties
 
@@ -81,6 +86,26 @@ class MLXService {
 
         do {
             try FileManager.default.removeItem(at: directory)
+            refreshCachedModels()
+        } catch {
+            throw MLXError.modelDeletionFailed(error.localizedDescription)
+        }
+    }
+
+    func clearCachedModels() throws {
+        if currentModelIdentifier != nil {
+            throw MLXError.modelInUse
+        }
+
+        guard let cachesDirectory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return
+        }
+
+        let modelsDirectory = cachesDirectory.appendingPathComponent("models", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: modelsDirectory.path) else { return }
+
+        do {
+            try FileManager.default.removeItem(at: modelsDirectory)
             refreshCachedModels()
         } catch {
             throw MLXError.modelDeletionFailed(error.localizedDescription)
@@ -185,6 +210,9 @@ class MLXService {
         case qwen3_4b_4bit
         case gemma3n_E2B_it_lm_4bit
         case gemma3n_E4B_it_lm_4bit
+        case gemma3n_E2B_4bit
+        case gemma3n_E2B_3bit
+        case qwen3_VL_4B_instruct_4bit
         case custom(String) // HuggingFace model ID
 
         var configuration: ModelConfiguration {
@@ -203,6 +231,12 @@ class MLXService {
                 return LLMRegistry.gemma3n_E2B_it_lm_4bit
             case .gemma3n_E4B_it_lm_4bit:
                 return LLMRegistry.gemma3n_E4B_it_lm_4bit
+            case .gemma3n_E2B_4bit:
+                return ModelConfiguration(id: "mlx-community/gemma-3n-E2B-4bit")
+            case .gemma3n_E2B_3bit:
+                return ModelConfiguration(id: "mlx-community/gemma-3n-E2B-3bit")
+            case .qwen3_VL_4B_instruct_4bit:
+                return ModelConfiguration(id: "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit")
             case .custom(let id):
                 return ModelConfiguration(id: id)
             }
@@ -229,6 +263,9 @@ class MLXService {
             case .qwen3_4b_4bit: return "Qwen 3.4B 4bit"
             case .gemma3n_E2B_it_lm_4bit: return "Gemma 3n E2B it lm 4bit"
             case .gemma3n_E4B_it_lm_4bit: return "Gemma 3n E4B it lm 4bit"
+            case .gemma3n_E2B_4bit: return "Gemma 3n E2B 4bit"
+            case .gemma3n_E2B_3bit: return "Gemma 3n E2B 3bit"
+            case .qwen3_VL_4B_instruct_4bit: return "Qwen3 VL 4B Instruct 4bit"
             case .custom(let id): return id
             }
         }
@@ -243,9 +280,22 @@ class MLXService {
             case .qwen3_4b_4bit: return "Qwen 3 4B 4bit"
             case .gemma3n_E2B_it_lm_4bit: return "Gemma 3n E2B"
             case .gemma3n_E4B_it_lm_4bit: return "Gemma 3n E4B"
+            case .gemma3n_E2B_4bit: return "Gemma 3n E2B 4bit"
+            case .gemma3n_E2B_3bit: return "Gemma 3n E2B 3bit"
+            case .qwen3_VL_4B_instruct_4bit: return "Qwen3 VL 4B"
             case .custom(let id):
                 let parts = id.split(separator: "/")
                 return String(parts.last ?? Substring(id))
+            }
+        }
+        
+        /// Tracks whether the given model support an image
+        var supportsImages: Bool {
+            switch self {
+            case .gemma3n_E2B_4bit, .gemma3n_E2B_3bit, .qwen3_VL_4B_instruct_4bit:
+                return true
+            default:
+                return false
             }
         }
     }
@@ -273,6 +323,7 @@ class MLXService {
     func loadModel(_ preset: ModelPreset) async throws {
         loadingModelName = preset.displayName
         try await loadModel(configuration: preset.configuration, shortName: preset.shortName)
+        currentPreset = preset
     }
 
     /// Loads a model from given HuggingFace ID.
@@ -351,6 +402,7 @@ class MLXService {
         isModelLoaded = false
         modelInformation = nil
         currentModelShortName = nil
+        currentPreset = nil
         downloadProgress = 0.0
         isLoadingModel = false
         loadingModelName = nil
@@ -367,7 +419,7 @@ class MLXService {
         var maxTokens: Int = 1024
         var temperature: Float =  0.7
         var topP: Float = 0.9
-        var systemPrompt: String = "You are a helpful assistant. Respond to the user in a helpful manner"
+        var systemPrompt: String = AppConfig.systemPrompt
         
         static var `default` = GenerationConfig()
     }
@@ -416,13 +468,12 @@ class MLXService {
                 
                 do {
                     _ = try await modelContainer.perform { context in
-                        let input = try await context.processor.prepare(
-                            input: .init(messages: [
-                                ["role": "system", "content": config.systemPrompt],
-                                ["role": "user", "content": prompt],
-                            
-                            ])
-                        )
+                        let chatMessages: [Chat.Message] = [
+                            .system(config.systemPrompt),
+                            .user(prompt)
+                        ]
+                        let userInput = UserInput(chat: chatMessages)
+                        let input = try await context.processor.prepare(input: userInput)
                         
                         return try MLXLMCommon.generate(
                             input: input,
@@ -462,22 +513,40 @@ class MLXService {
               }
 
               do {
-                  // Convert Message array to format expected by MLX
-                  var chatMessages: [[String: String]] = [
-                      ["role": "system", "content": config.systemPrompt]
-                  ]
+                  let chatMessages: [Chat.Message] = [
+                      .system(config.systemPrompt)
+                  ] + messages.map { message in
+                      let role: Chat.Message.Role = {
+                          switch message.role {
+                          case .user: return .user
+                          case .assistant: return .assistant
+                          case .system: return .system
+                          }
+                      }()
 
-                  for message in messages {
-                      chatMessages.append([
-                          "role": message.role == .user ? "user" : "assistant",
-                          "content": message.content
-                      ])
+                      let images: [UserInput.Image] = message.attachments.compactMap { attachment in
+                          guard attachment.type == .image,
+                                let uiImage = UIImage(data: attachment.data),
+                                let ciImage = CIImage(image: uiImage) else {
+                              return nil
+                          }
+                          return .ciImage(ciImage)
+                      }
+
+                      return Chat.Message(
+                          role: role,
+                          content: message.content,
+                          images: images
+                      )
                   }
 
+                  let userInput = UserInput(
+                      chat: chatMessages,
+                      processing: .init(resize: .init(width: 512, height: 512))
+                  )
+
                   _ = try await container.perform { context in
-                      let input = try await context.processor.prepare(
-                          input: .init(messages: chatMessages)
-                      )
+                      let input = try await context.processor.prepare(input: userInput)
 
                       return try MLXLMCommon.generate(
                           input: input,

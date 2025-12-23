@@ -12,6 +12,7 @@ import MLX
 import MLXNN
 import MLXLLM
 import MLXLMCommon
+import MLXVLM
 import Observation
 import Hub
 internal import Tokenizers
@@ -53,6 +54,11 @@ class MLXService {
     /// Currently loaded preset (only set when loading from a preset).
     private(set) var currentPreset: ModelPreset?
 
+    // MARK: - Generation Metrics
+
+    /// Metrics from the last generation (reset on each new generation).
+    private(set) var lastGenerationMetrics: GenerationMetrics?
+
     // MARK: - Private Properties
 
     /// A container for models that guarantees single threaded access.
@@ -63,11 +69,16 @@ class MLXService {
     /// Tracks whether we're loading from an already-downloaded cache.
     private var isLoadingFromCache = false
 
+    /// Timing for metrics tracking.
+    private var generationStartTime: Date?
+    private var firstTokenTime: Date?
+    private var tokenCount: Int = 0
+
     // MARK: - Initializer
     
     init() {
-        // Set GPU Cache Limit, 2GB for now
-        MLX.GPU.set(cacheLimit: 20 * 1024 * 1024 * 1024 * 1024)
+        // Set GPU Cache Limit, 6GB for now
+        MLX.GPU.set(cacheLimit: 4 * 1024 * 1024 * 1024)
         refreshCachedModels()
     }
 
@@ -213,7 +224,13 @@ class MLXService {
         case gemma3n_E2B_4bit
         case gemma3n_E2B_3bit
         case qwen3_VL_4B_instruct_4bit
+        case qwen3_VL_4B_thinking_3bit
         case custom(String) // HuggingFace model ID
+
+        enum ModelType {
+            case llm
+            case vlm
+        }
 
         var configuration: ModelConfiguration {
             switch self {
@@ -237,6 +254,8 @@ class MLXService {
                 return ModelConfiguration(id: "mlx-community/gemma-3n-E2B-3bit")
             case .qwen3_VL_4B_instruct_4bit:
                 return ModelConfiguration(id: "lmstudio-community/Qwen3-VL-4B-Instruct-MLX-4bit")
+            case .qwen3_VL_4B_thinking_3bit:
+                return ModelConfiguration(id: "mlx-community/Qwen3-VL-4B-Thinking-3bit")
             case .custom(let id):
                 return ModelConfiguration(id: id)
             }
@@ -266,6 +285,7 @@ class MLXService {
             case .gemma3n_E2B_4bit: return "Gemma 3n E2B 4bit"
             case .gemma3n_E2B_3bit: return "Gemma 3n E2B 3bit"
             case .qwen3_VL_4B_instruct_4bit: return "Qwen3 VL 4B Instruct 4bit"
+            case .qwen3_VL_4B_thinking_3bit: return "Qwen3 VL 4B Thinking 3bit"
             case .custom(let id): return id
             }
         }
@@ -283,6 +303,7 @@ class MLXService {
             case .gemma3n_E2B_4bit: return "Gemma 3n E2B 4bit"
             case .gemma3n_E2B_3bit: return "Gemma 3n E2B 3bit"
             case .qwen3_VL_4B_instruct_4bit: return "Qwen3 VL 4B"
+            case .qwen3_VL_4B_thinking_3bit: return "Qwen3 VL 4B Think"
             case .custom(let id):
                 let parts = id.split(separator: "/")
                 return String(parts.last ?? Substring(id))
@@ -292,10 +313,20 @@ class MLXService {
         /// Tracks whether the given model support an image
         var supportsImages: Bool {
             switch self {
-            case .gemma3n_E2B_4bit, .gemma3n_E2B_3bit, .qwen3_VL_4B_instruct_4bit:
+            case .gemma3n_E2B_4bit, .gemma3n_E2B_3bit, .qwen3_VL_4B_instruct_4bit,
+                 .qwen3_VL_4B_thinking_3bit:
                 return true
             default:
                 return false
+            }
+        }
+
+        var modelType: ModelType {
+            switch self {
+            case .qwen3_VL_4B_instruct_4bit, .qwen3_VL_4B_thinking_3bit:
+                return .vlm
+            default:
+                return .llm
             }
         }
     }
@@ -322,7 +353,11 @@ class MLXService {
     /// Loads a model from preset
     func loadModel(_ preset: ModelPreset) async throws {
         loadingModelName = preset.displayName
-        try await loadModel(configuration: preset.configuration, shortName: preset.shortName)
+        try await loadModel(
+            configuration: preset.configuration,
+            shortName: preset.shortName,
+            modelType: preset.modelType
+        )
         currentPreset = preset
     }
 
@@ -333,11 +368,15 @@ class MLXService {
         // Extract short name from HF ID (last component)
         let parts = hfID.split(separator: "/")
         let shortName = String(parts.last ?? Substring(hfID))
-        try await loadModel(configuration: config, shortName: shortName)
+        try await loadModel(configuration: config, shortName: shortName, modelType: .llm)
     }
     
     /// Loads a model with the given configuration.
-    func loadModel(configuration: ModelConfiguration, shortName: String? = nil) async throws {
+    func loadModel(
+        configuration: ModelConfiguration,
+        shortName: String? = nil,
+        modelType: ModelPreset.ModelType = .llm
+    ) async throws {
         unloadModel()
 
         isLoadingModel = true
@@ -353,7 +392,8 @@ class MLXService {
         }
 
         do {
-            modelContainer = try await LLMModelFactory.shared.loadContainer(
+            let factory: ModelFactory = modelType == .vlm ? VLMModelFactory.shared : LLMModelFactory.shared
+            modelContainer = try await factory.loadContainer(
                 configuration: configuration
             ) { [weak self] progress in
 
@@ -505,17 +545,29 @@ class MLXService {
       messages: [Message],
       config: GenerationConfig = .default
     ) -> AsyncStream<String> {
-      AsyncStream { continuation in
-          currentGenerationTask = Task {
-              guard let container = modelContainer else {
+      // Reset metrics
+      lastGenerationMetrics = nil
+      generationStartTime = Date()
+      firstTokenTime = nil
+      tokenCount = 0
+
+      return AsyncStream { continuation in
+          currentGenerationTask = Task { [weak self] in
+              guard let self, let container = modelContainer else {
                   continuation.finish()
                   return
               }
 
               do {
+                  // Clear GPU cache before generation to free memory
+                  MLX.GPU.clearCache()
+
+                  // Find the last user message index (for image attachment)
+                  let lastUserIndex = messages.lastIndex { $0.role == .user }
+
                   let chatMessages: [Chat.Message] = [
                       .system(config.systemPrompt)
-                  ] + messages.map { message in
+                  ] + messages.enumerated().map { index, message in
                       let role: Chat.Message.Role = {
                           switch message.role {
                           case .user: return .user
@@ -524,29 +576,58 @@ class MLXService {
                           }
                       }()
 
-                      let images: [UserInput.Image] = message.attachments.compactMap { attachment in
-                          guard attachment.type == .image,
-                                let uiImage = UIImage(data: attachment.data),
-                                let ciImage = CIImage(image: uiImage) else {
-                              return nil
+                      // ONLY attach images to the very last user message
+                      // Skip ALL images from conversation history to save memory
+                      let images: [UserInput.Image]
+                      if index == lastUserIndex {
+                          // VLMs typically accept a single image per request; cap to one for now.
+                          // We can later fan out to multiple generations if multiple images are attached.
+                          images = message.attachments.prefix(1).compactMap { attachment -> UserInput.Image? in
+                              guard attachment.type == .image,
+                                    let uiImage = UIImage(data: attachment.data),
+                                    let resized = uiImage.resizedForVLM(maxDimension: 224),
+                                    let ciImage = CIImage(image: resized) else {
+                                  NSLog("[MLXService] Failed to process image attachment")
+                                  return nil
+                              }
+                              NSLog("[MLXService] Processed image: %@", "\(resized.size)")
+                              return .ciImage(ciImage)
                           }
-                          return .ciImage(ciImage)
+                      } else {
+                          images = []
+                      }
+
+                      // If message had images but we're not including them, note it in content
+                      let content: String
+                      if index != lastUserIndex && !message.attachments.isEmpty {
+                          // Historical message with image - just reference it
+                          content = message.content.isEmpty ? "[Previous image]" : message.content
+                      } else if !images.isEmpty && message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                          content = "Describe this image."
+                      } else {
+                          content = message.content
                       }
 
                       return Chat.Message(
                           role: role,
-                          content: message.content,
+                          content: content,
                           images: images
                       )
                   }
 
+                  NSLog("[MLXService] Created %d chat messages", chatMessages.count)
+
                   let userInput = UserInput(
                       chat: chatMessages,
-                      processing: .init(resize: .init(width: 512, height: 512))
+                      processing: .init(resize: .init(width: 224, height: 224))
                   )
 
-                  _ = try await container.perform { context in
+                  NSLog("[MLXService] Starting model.perform...")
+
+                  _ = try await container.perform { [weak self] context in
+                      NSLog("[MLXService] Preparing input...")
                       let input = try await context.processor.prepare(input: userInput)
+                      NSLog("[MLXService] Input prepared, starting generation...")
 
                       return try MLXLMCommon.generate(
                           input: input,
@@ -558,6 +639,15 @@ class MLXService {
                               return .stop
                           }
 
+                          // Track first token time
+                          Task { @MainActor [weak self] in
+                              guard let self else { return }
+                              if self.firstTokenTime == nil {
+                                  self.firstTokenTime = Date()
+                              }
+                              self.tokenCount = tokens.count
+                          }
+
                           let text = context.tokenizer.decode(tokens: tokens)
                           continuation.yield(text)
 
@@ -565,13 +655,46 @@ class MLXService {
                       }
                   }
 
+                  print("[MLXService] Generation complete")
+
+                  // Calculate final metrics
+                  await MainActor.run { [weak self] in
+                      self?.finalizeMetrics()
+                  }
+
                   continuation.finish()
 
               } catch {
+                  print("[MLXService] Error during generation: \(error)")
                   continuation.finish()
               }
           }
       }
+    }
+
+    /// Finalizes and stores generation metrics.
+    private func finalizeMetrics() {
+        guard let startTime = generationStartTime else { return }
+
+        let endTime = Date()
+        let totalTime = endTime.timeIntervalSince(startTime)
+
+        var ttft: Double? = nil
+        if let firstToken = firstTokenTime {
+            ttft = firstToken.timeIntervalSince(startTime) * 1000 // Convert to ms
+        }
+
+        var tokensPerSecond: Double? = nil
+        if tokenCount > 0 && totalTime > 0 {
+            tokensPerSecond = Double(tokenCount) / totalTime
+        }
+
+        lastGenerationMetrics = GenerationMetrics(
+            timeToFirstTokenMs: ttft,
+            tokensPerSecond: tokensPerSecond,
+            totalTokens: tokenCount > 0 ? tokenCount : nil,
+            totalTimeSeconds: totalTime > 0 ? totalTime : nil
+        )
     }
 
     /// Cancels any ongoing generation
@@ -605,3 +728,26 @@ class MLXService {
          }
      }
  }
+
+// MARK: - UIImage Extension for VLM
+
+extension UIImage {
+    /// Resizes image to fit within maxDimension while preserving aspect ratio.
+    /// Returns nil if resizing fails.
+    func resizedForVLM(maxDimension: CGFloat) -> UIImage? {
+        let currentMax = max(size.width, size.height)
+        guard currentMax > maxDimension else { return self }
+
+        let scale = maxDimension / currentMax
+        let newSize = CGSize(
+            width: floor(size.width * scale),
+            height: floor(size.height * scale)
+        )
+
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        defer { UIGraphicsEndImageContext() }
+
+        draw(in: CGRect(origin: .zero, size: newSize))
+        return UIGraphicsGetImageFromCurrentImageContext()
+    }
+}

@@ -44,6 +44,13 @@ struct MessageRow: View {
                         )
                         .clipShape(BubbleShape())
                         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = trimmedContent
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                        }
 
                     Text(message.timestamp, style: .time)
                         .font(.caption2)
@@ -79,6 +86,31 @@ struct MessageRow: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contextMenu {
+                    // Copy button
+                    Button {
+                        UIPasteboard.general.string = trimmedContent
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+
+                    // Metrics section (only for assistant messages with metrics)
+                    if let metrics = message.metrics {
+                        Divider()
+
+                        if metrics.timeToFirstTokenMs != nil {
+                            Label("TTFT: \(metrics.formattedTTFT)", systemImage: "clock")
+                        }
+
+                        if metrics.tokensPerSecond != nil {
+                            Label("Speed: \(metrics.formattedTokensPerSecond)", systemImage: "speedometer")
+                        }
+
+                        if let tokens = metrics.totalTokens {
+                            Label("Tokens: \(tokens)", systemImage: "number")
+                        }
+                    }
+                }
             }
         }
     }

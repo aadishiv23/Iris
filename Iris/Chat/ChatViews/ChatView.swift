@@ -407,8 +407,9 @@ extension MLXService.ModelPreset: CaseIterable {
             .gemma3n_E2B_it_lm_4bit,
             .gemma3n_E4B_it_lm_4bit,
             .gemma3n_E2B_4bit,
-            .gemma3n_E2B_3bit
-            ,.qwen3_VL_4B_instruct_4bit
+            .gemma3n_E2B_3bit,
+            .qwen3_VL_4B_instruct_4bit,
+            .qwen3_VL_4B_thinking_3bit
         ]
     }
 }

@@ -168,30 +168,36 @@ class ChatManager {
         for await fullText in mlxService.generateStream(messages: messages) {
             // Check for cancellation
             if Task.isCancelled { break }
-            
+
             // Check we are still generating for this conversation
             guard generatingConversationID == conversationId else { break }
-            
+
             // Extract only new part
             let newText = String(fullText.dropFirst(previousLength))
             previousLength = fullText.count
             fullResponse += newText
-            
+
             // Update with assistant message
             updateAssistantMessage(conversationId: conversationId, messageId: assistantMessageId, content: fullResponse)
         }
-        
+
+        // Capture metrics after generation completes
+        let metrics = mlxService.lastGenerationMetrics
+
         // Handle empty responses
-        
         if fullResponse.isEmpty && !Task.isCancelled {
-            updateAssistantMessage(conversationId: conversationId, messageId: assistantMessageId, content: "Sorry, I couldn't generate a response.")
+            updateAssistantMessage(conversationId: conversationId, messageId: assistantMessageId, content: "Sorry, I couldn't generate a response.", metrics: metrics)
+        } else {
+            // Final update with metrics
+            updateAssistantMessage(conversationId: conversationId, messageId: assistantMessageId, content: fullResponse, metrics: metrics)
         }
     }
     
     private func updateAssistantMessage(
         conversationId: UUID,
         messageId: UUID,
-        content: String
+        content: String,
+        metrics: GenerationMetrics? = nil
     ) {
         guard let convIndex = conversations.firstIndex(where: { $0.id == conversationId }),
               let msgIndex = conversations[convIndex].messages.firstIndex(where: { $0.id == messageId })
@@ -202,7 +208,8 @@ class ChatManager {
             id: original.id,
             role: .assistant,
             content: content,
-            timestamp: original.timestamp
+            timestamp: original.timestamp,
+            metrics: metrics ?? original.metrics
         )
     }
     

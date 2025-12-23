@@ -16,7 +16,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "298"
             endingLineNumber = "298"
-            landmarkName = "supportsImages"
+            landmarkName = "shortName"
             landmarkType = "24">
          </BreakpointContent>
       </BreakpointProxy>
@@ -32,7 +32,69 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "492"
             endingLineNumber = "492"
-            landmarkName = "generateStream(prompt:config:)"
+            landmarkName = "generate(prompt:config:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD - 73598225315f810"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(3) suspend resume partial function for closure #1 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in Iris.MLXService.generate(prompt: Swift.String, config: Iris.MLXService.GenerationConfig) async throws -&gt; Swift.String"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "492"
+                  endingLineNumber = "492">
+               </Location>
+               <Location
+                  uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD - 68a6812098608611"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(4) suspend resume partial function for closure #1 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in Iris.MLXService.generate(prompt: Swift.String, config: Iris.MLXService.GenerationConfig) async throws -&gt; Swift.String"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "492"
+                  endingLineNumber = "492">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "EAB18A89-8770-4C32-AF31-11484C9DBED1"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "597"
+            endingLineNumber = "597"
+            landmarkName = "generateStream(messages:config:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "65CB378F-3053-463B-A00E-7471DBD4557C"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "594"
+            endingLineNumber = "594"
+            landmarkName = "generateStream(messages:config:)"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

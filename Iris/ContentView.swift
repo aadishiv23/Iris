@@ -19,13 +19,18 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if chatManager.activeConversationID != nil {
+            if chatManager.isLoadingConversations {
+                // Show empty background while loading to prevent flicker
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+            } else if chatManager.activeConversationID != nil {
                 ChatView(chatManager: chatManager)
             } else {
                 HomeView(chatManager: chatManager)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: chatManager.activeConversationID)
+        .animation(.easeInOut(duration: 0.15), value: chatManager.isLoadingConversations)
     }
 }
 

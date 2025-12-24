@@ -6,8 +6,9 @@
 //
 
 import Foundation
+#if os(iOS)
 import UIKit
-
+#endif
 /// A lightweight in-memory representation of an image selected for sending.
 struct PendingImage: Identifiable {
     /// Unique identfier.

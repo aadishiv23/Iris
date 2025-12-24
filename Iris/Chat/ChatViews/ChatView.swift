@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MLXLMCommon
 
 /// Primary chat surface that wires the view model into the conversation UI.
 struct ChatView: View {
@@ -411,6 +412,16 @@ extension MLXService.ModelPreset: CaseIterable {
             .qwen3_VL_4B_instruct_4bit,
             .qwen3_VL_4B_thinking_3bit
         ]
+    }
+
+    /// Returns the configuration identifier string for this preset.
+    var configurationId: String? {
+        switch configuration.id {
+        case .id(let id, _):
+            return id
+        case .directory(let url):
+            return url.path
+        }
     }
 }
 

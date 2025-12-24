@@ -13,13 +13,13 @@ import SwiftUI
 @MainActor
 class ChatManager {
     // MARK: - Properties
-    
-    /// All converations.
+
+    /// All conversations.
     var conversations: [Conversation] = []
-    
+
     /// Currently active conversation ID.
     var activeConversationID: UUID? = nil
-    
+
     /// Computed: the active conversation.
     var activeConversation: Conversation? {
         get { conversations.first { $0.id == activeConversationID } }
@@ -29,66 +29,203 @@ class ChatManager {
             }
         }
     }
-    
+
     /// State tracking whether a generation is in progress.
     var isGenerating = false
 
+    /// Indicates if conversations are still loading from disk.
+    var isLoadingConversations = true
+
     /// User-facing alert message for chat warnings.
     var alertMessage: String?
-    
+
+    /// Indicates if a model switch is pending for conversation selection.
+    var pendingModelSwitch: PendingModelSwitch?
+
     // MARK: - Dependencies
-    
+
     let mlxService: MLXService
-    
+    private let storageService: ConversationStorageService?
+
     // MARK: - Private Properties
-    
+
     /// The ID of conversation currently generating.
     private var generatingConversationID: UUID? = nil
-    
+
     /// Current generation task stored for cancellation.
     private var generationTask: Task<Void, Never>?
-    
+
     // MARK: - Init
-    
+
     init(mlxService: MLXService) {
         self.mlxService = mlxService
-        
-        // Start with one conversation
-        let initial = Conversation()
-        conversations.append(initial)
-        activeConversationID = initial.id
+
+        // Initialize storage service
+        do {
+            self.storageService = try ConversationStorageService()
+        } catch {
+            print("[ChatManager] Failed to initialize storage: \(error)")
+            self.storageService = nil
+        }
+
+        // Load persisted conversations
+        Task { @MainActor in
+            await loadPersistedConversations()
+        }
     }
-    
-//    init(mlxService: MLXService) {
-//        self.mlxService = mlxService
-//        activeConversationId = nil
-//    }
+
+    // MARK: - Persistence
+
+    /// Loads all conversations from disk on app launch.
+    private func loadPersistedConversations() async {
+        defer { isLoadingConversations = false }
+
+        guard let storageService else {
+            // Fallback to in-memory only
+            let initial = Conversation()
+            conversations.append(initial)
+            activeConversationID = initial.id
+            return
+        }
+
+        do {
+            let loaded = try await storageService.loadAllConversations()
+
+            if loaded.isEmpty {
+                // No saved conversations, create initial one
+                let initial = Conversation()
+                conversations.append(initial)
+                activeConversationID = initial.id
+            } else {
+                conversations = loaded
+                // Don't auto-select; let user choose from HomeView
+                activeConversationID = nil
+            }
+        } catch {
+            print("[ChatManager] Failed to load conversations: \(error)")
+            // Fallback to empty state with one new conversation
+            let initial = Conversation()
+            conversations.append(initial)
+            activeConversationID = initial.id
+        }
+    }
+
+    /// Saves a specific conversation to disk.
+    private func saveConversation(_ conversation: Conversation) {
+        guard let storageService else { return }
+        Task {
+            do {
+                try await storageService.saveConversation(conversation)
+            } catch {
+                print("[ChatManager] Failed to save conversation \(conversation.id): \(error)")
+            }
+        }
+    }
     
     // MARK: - Navigation
 
     func goHome() {
         activeConversationID = nil
     }
-    
+
     // MARK: - Conversation Management
-    
+
     func createNewConversation() {
-        let newConversation = Conversation()
+        // Capture current model identifier if a model is loaded
+        let modelId = mlxService.modelIdentifier
+
+        var newConversation = Conversation()
+        newConversation.modelIdentifier = modelId
+
         conversations.insert(newConversation, at: 0)
         activeConversationID = newConversation.id
+
+        // Save immediately
+        saveConversation(newConversation)
     }
-    
+
     func selectConversation(_ id: UUID) {
-        activeConversationID = id
+        guard let conversation = conversations.first(where: { $0.id == id }) else { return }
+
+        let currentModelId = mlxService.modelIdentifier
+        let conversationModelId = conversation.modelIdentifier
+
+        // Check if model switch is needed
+        if let conversationModelId,
+           conversationModelId != currentModelId {
+            // Model mismatch - prompt user
+            pendingModelSwitch = PendingModelSwitch(
+                conversationID: id,
+                requiredModelIdentifier: conversationModelId
+            )
+        } else {
+            // Same model or no model specified - select directly
+            activeConversationID = id
+        }
     }
-    
+
+    /// Called after user confirms model switch or decides to proceed without switching.
+    func confirmConversationSelection(loadModel: Bool) {
+        guard let pending = pendingModelSwitch else { return }
+
+        if loadModel {
+            // Load the required model
+            Task { @MainActor in
+                await loadModelForConversation(pending.requiredModelIdentifier)
+                activeConversationID = pending.conversationID
+                pendingModelSwitch = nil
+            }
+        } else {
+            // User chose to proceed without loading model
+            activeConversationID = pending.conversationID
+            pendingModelSwitch = nil
+        }
+    }
+
+    func cancelConversationSelection() {
+        pendingModelSwitch = nil
+    }
+
+    private func loadModelForConversation(_ modelIdentifier: String) async {
+        // Find matching preset by identifier
+        if let preset = MLXService.ModelPreset.allCases.first(where: { preset in
+            preset.configurationId == modelIdentifier
+        }) {
+            do {
+                try await mlxService.loadModel(preset)
+            } catch {
+                print("[ChatManager] Failed to load model: \(error)")
+                alertMessage = "Failed to load model: \(error.localizedDescription)"
+            }
+        } else {
+            // Try loading as custom HuggingFace ID
+            do {
+                try await mlxService.loadModel(hfID: modelIdentifier)
+            } catch {
+                print("[ChatManager] Failed to load custom model: \(error)")
+                alertMessage = "Failed to load model: \(error.localizedDescription)"
+            }
+        }
+    }
+
     func deleteConversation(_ id: UUID) {
         conversations.removeAll(where: { $0.id == id })
-        
+
         if activeConversationID == id {
             activeConversationID = conversations.first?.id
         }
-        
+
+        // Delete from disk
+        if let storageService {
+            Task {
+                do {
+                    try await storageService.deleteConversation(id: id)
+                } catch {
+                    print("[ChatManager] Failed to delete conversation file: \(error)")
+                }
+            }
+        }
+
         // Ensure at least one conversation exists
         if conversations.isEmpty {
             createNewConversation()
@@ -115,12 +252,21 @@ class ChatManager {
         if isGenerating {
             cancelGeneration()
         }
-        
+
+        // Update model identifier on conversation if not set
+        if conversations[index].modelIdentifier == nil {
+            conversations[index].modelIdentifier = mlxService.modelIdentifier
+        }
+
         // Add user message with animation
         let userMessage = Message(role: .user, content: text, attachments: filteredAttachments)
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
             conversations[index].messages.append(userMessage)
+            conversations[index].updatedAt = Date()
         }
+
+        // Save after user message
+        saveConversation(conversations[index])
 
         // Add placeholder assistant message with animation
         let assistantMessage = Message(role: .assistant, content: "")
@@ -128,7 +274,7 @@ class ChatManager {
             conversations[index].messages.append(assistantMessage)
         }
         let assistantMessageId = assistantMessage.id
-        
+
         // Start generation
         isGenerating = true
         generatingConversationID = activeConversationID
@@ -150,9 +296,14 @@ class ChatManager {
                 isGenerating = false
                 generatingConversationID = nil
                 generationTask = nil
+
+                // Save after generation completes
+                if let conversation = conversations.first(where: { $0.id == conversationId }) {
+                    saveConversation(conversation)
+                }
             }
         }
-        
+
         guard let index = conversations.firstIndex(where: { $0.id == conversationId }) else {
             isGenerating = false
             return
@@ -219,5 +370,21 @@ class ChatManager {
         mlxService.cancelGeneration()
         isGenerating = false
         generatingConversationID = nil
+    }
+}
+
+// MARK: - Supporting Types
+
+extension ChatManager {
+    /// Represents a pending model switch when selecting a conversation.
+    struct PendingModelSwitch {
+        let conversationID: UUID
+        let requiredModelIdentifier: String
+
+        /// Returns a short display name for the model.
+        var modelDisplayName: String {
+            let parts = requiredModelIdentifier.split(separator: "/")
+            return String(parts.last ?? Substring(requiredModelIdentifier))
+        }
     }
 }

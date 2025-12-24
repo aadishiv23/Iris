@@ -7,8 +7,9 @@
 
 import Foundation
 import SwiftUI
+#if os(iOS)
 import UIKit
-
+#endif
 
 /// Single chat bubble for user messages, plain text for assistant messages.
 struct MessageRow: View {

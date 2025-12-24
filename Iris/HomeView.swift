@@ -102,6 +102,27 @@ struct HomeView: View {
                     .frame(minWidth: 450, minHeight: 400)
                     #endif
             }
+            .alert(
+                "Switch Model?",
+                isPresented: Binding(
+                    get: { chatManager.pendingModelSwitch != nil },
+                    set: { if !$0 { chatManager.cancelConversationSelection() } }
+                )
+            ) {
+                Button("Load Model") {
+                    chatManager.confirmConversationSelection(loadModel: true)
+                }
+                Button("Continue Without Loading", role: .cancel) {
+                    chatManager.confirmConversationSelection(loadModel: false)
+                }
+                Button("Cancel", role: .destructive) {
+                    chatManager.cancelConversationSelection()
+                }
+            } message: {
+                if let pending = chatManager.pendingModelSwitch {
+                    Text("This conversation was created with \(pending.modelDisplayName). Would you like to load it?")
+                }
+            }
         }
     }
 }
@@ -192,6 +213,17 @@ struct ConversationCard: View {
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
             }
+
+            // Model badge
+            if let modelId = conversation.modelIdentifier {
+                HStack(spacing: 4) {
+                    Image(systemName: "cpu")
+                        .font(.caption2)
+                    Text(formatModelName(modelId))
+                        .font(.caption2)
+                }
+                .foregroundStyle(.tertiary)
+            }
         }
         .padding(16)
         .background(colorScheme == .dark ? Color(hex: 0x121212) : Color(hex: 0xFFFFFF))
@@ -209,6 +241,10 @@ struct ConversationCard: View {
 
     private var conversationPreview: String {
         conversation.messages.last?.content ?? "No messages yet"
+    }
+
+    private func formatModelName(_ identifier: String) -> String {
+        String(identifier.split(separator: "/").last ?? Substring(identifier))
     }
 }
 

@@ -9,7 +9,9 @@ import Foundation
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
+#if os(iOS)
 import UIKit
+#endif
 import _PhotosUI_SwiftUI
 
 @Observable

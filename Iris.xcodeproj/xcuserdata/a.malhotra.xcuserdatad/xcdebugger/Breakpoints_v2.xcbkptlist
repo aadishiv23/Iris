@@ -14,8 +14,8 @@
             filePath = "Iris/Services/MLXService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "298"
-            endingLineNumber = "298"
+            startingLineNumber = "300"
+            endingLineNumber = "300"
             landmarkName = "shortName"
             landmarkType = "24">
          </BreakpointContent>
@@ -30,8 +30,8 @@
             filePath = "Iris/Services/MLXService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "492"
-            endingLineNumber = "492"
+            startingLineNumber = "494"
+            endingLineNumber = "494"
             landmarkName = "generate(prompt:config:)"
             landmarkType = "7">
             <Locations>
@@ -50,11 +50,11 @@
                   endingLineNumber = "492">
                </Location>
                <Location
-                  uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD - 68a6812098608611"
+                  uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD - df6a1823821c4c1a"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
-                  symbolName = "(4) suspend resume partial function for closure #1 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in Iris.MLXService.generate(prompt: Swift.String, config: Iris.MLXService.GenerationConfig) async throws -&gt; Swift.String"
+                  symbolName = "closure #1 (Swift.Array&lt;Swift.Int&gt;) -&gt; MLXLMCommon.GenerateDisposition in closure #1 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in Iris.MLXService.generate(prompt: Swift.String, config: Iris.MLXService.GenerationConfig) async throws -&gt; Swift.String"
                   moduleName = "Iris.debug.dylib"
                   usesParentBreakpointCondition = "Yes"
                   urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
@@ -76,8 +76,8 @@
             filePath = "Iris/Services/MLXService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "597"
-            endingLineNumber = "597"
+            startingLineNumber = "599"
+            endingLineNumber = "599"
             landmarkName = "generateStream(messages:config:)"
             landmarkType = "7">
          </BreakpointContent>
@@ -92,8 +92,8 @@
             filePath = "Iris/Services/MLXService.swift"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "594"
-            endingLineNumber = "594"
+            startingLineNumber = "596"
+            endingLineNumber = "596"
             landmarkName = "generateStream(messages:config:)"
             landmarkType = "7">
          </BreakpointContent>

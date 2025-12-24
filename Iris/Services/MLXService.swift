@@ -7,7 +7,9 @@
 
 import Foundation
 import CoreImage
+#if os(iOS)
 import UIKit
+#endif
 import MLX
 import MLXNN
 import MLXLLM
@@ -50,6 +52,9 @@ class MLXService {
 
     /// Identifier for the model that is currently active in memory.
     private var currentModelIdentifier: String?
+
+    /// Public accessor for the current model's identifier (e.g., HuggingFace ID).
+    var modelIdentifier: String? { currentModelIdentifier }
     
     /// Currently loaded preset (only set when loading from a preset).
     private(set) var currentPreset: ModelPreset?

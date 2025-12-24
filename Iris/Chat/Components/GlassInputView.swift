@@ -7,7 +7,9 @@
 
 import SwiftUI
 import PhotosUI
+#if os(iOS)
 import UIKit
+#endif
 
 // MARK: - Glass Input View
 

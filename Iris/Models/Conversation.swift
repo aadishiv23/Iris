@@ -23,18 +23,24 @@ struct Conversation: Codable, Identifiable {
     
     /// The date representing the last update to this given conversation thread.
     var updatedAt: Date
-    
+
+    /// The identifier of the model used for this conversation (e.g., HuggingFace ID).
+    /// Used to restore the correct model when loading a saved conversation.
+    var modelIdentifier: String?
+
     init(
         id: UUID = UUID(),
         title: String = "New Chat",
         messages: [Message] = [],
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        modelIdentifier: String? = nil
     ) {
         self.id = id
         self.title = title
         self.messages = messages
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.modelIdentifier = modelIdentifier
     }
 }

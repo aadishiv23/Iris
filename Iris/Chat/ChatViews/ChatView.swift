@@ -10,46 +10,144 @@ import MLXLMCommon
 
 /// Primary chat surface that wires the view model into the conversation UI.
 struct ChatView: View {
-    
+
     // MARK: Properties
-    
+
     /// The ChatManager
     let chatManager: ChatManager
 
     /// ViewModel for this chat view
     @State private var viewModel: ChatViewModel
-    
+
     /// Show settings sheet
     @State private var showSettings = false
 
     /// Show model picker sheet
     @State private var showModelPicker = false
-    
+
     /// Tracks whether the user dismissed the model loading popup.
     @State private var hideModelLoadingPopup = false
-    
+
     // MARK: Init
-    
+
     init(chatManager: ChatManager) {
         self.chatManager = chatManager
         _viewModel = State(initialValue: ChatViewModel(chatManager: chatManager))
-        
     }
-    
+
     // MARK: Body
-    
+
     var body: some View {
+        ZStack(alignment: .leading) {
+            // Main content
+            mainContent
+
+            // Dimmed backdrop
+            if chatManager.isSidebarOpen {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        chatManager.closeSidebar()
+                    }
+                    .gesture(
+                        DragGesture()
+                            .onEnded { value in
+                                if value.translation.width < -50 {
+                                    chatManager.closeSidebar()
+                                }
+                            }
+                    )
+            }
+
+            // Edge swipe detection overlay (only when sidebar is closed)
+            if !chatManager.isSidebarOpen {
+                HStack {
+                    Color.clear
+                        .frame(width: 40)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture()
+                                .onEnded { value in
+                                    if value.translation.width > 50 {
+                                        chatManager.toggleSidebar()
+                                    }
+                                }
+                        )
+                    Spacer()
+                }
+                .ignoresSafeArea()
+            }
+
+            // Sidebar
+            SidebarView(chatManager: chatManager)
+                .offset(x: chatManager.isSidebarOpen ? 0 : -320)
+                .shadow(color: .black.opacity(chatManager.isSidebarOpen ? 0.2 : 0), radius: 10, x: 5)
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: chatManager.isSidebarOpen)
+        .sheet(isPresented: $showSettings) {
+            ChatSettingsView()
+                #if os(macOS)
+                .frame(minWidth: 400, minHeight: 300)
+                #endif
+        }
+        .sheet(isPresented: $showModelPicker) {
+            ChatModelPickerView(mlxService: chatManager.mlxService)
+                #if os(macOS)
+                .frame(minWidth: 450, minHeight: 400)
+                #endif
+        }
+        .alert("Notice", isPresented: Binding(
+            get: { viewModel.alertMessage != nil },
+            set: { if !$0 { viewModel.clearAlert() } }
+        )) {
+            Button("OK") {
+                viewModel.clearAlert()
+            }
+        } message: {
+            Text(viewModel.alertMessage ?? "")
+        }
+        .alert(
+            "Switch Model?",
+            isPresented: Binding(
+                get: { chatManager.pendingModelSwitch != nil },
+                set: { if !$0 { chatManager.cancelConversationSelection() } }
+            )
+        ) {
+            Button("Load Model") {
+                chatManager.confirmConversationSelection(loadModel: true)
+            }
+            Button("Continue Without Loading", role: .cancel) {
+                chatManager.confirmConversationSelection(loadModel: false)
+            }
+            Button("Cancel", role: .destructive) {
+                chatManager.cancelConversationSelection()
+            }
+        } message: {
+            if let pending = chatManager.pendingModelSwitch {
+                Text("This conversation was created with \(pending.modelDisplayName). Would you like to load it?")
+            }
+        }
+        .onChange(of: chatManager.mlxService.isLoadingModel) { _, isLoading in
+            if isLoading {
+                hideModelLoadingPopup = false
+            }
+        }
+    }
+
+    // MARK: Main Content
+
+    private var mainContent: some View {
         NavigationStack {
             ZStack {
                 AnimatedBackgroundView()
-                
+
                 ChatConversationView(
                     messages: viewModel.messages,
                     isGenerating: viewModel.isGeneratingResponse,
                     inputText: $viewModel.inputText,
                     pendingImages: $viewModel.pendingImages,
                     onSend: { viewModel.sendMessage() },
-                    onStop: { viewModel.stopGeneration()},
+                    onStop: { viewModel.stopGeneration() },
                     onPickImages: { items in
                         Task {
                             await viewModel.addPickedItems(items)
@@ -63,9 +161,9 @@ struct ChatView: View {
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     Button {
-                        chatManager.goHome()
+                        chatManager.toggleSidebar()
                     } label: {
-                        Image(systemName: "house")
+                        Image(systemName: "sidebar.left")
                             .foregroundStyle(.primary)
                     }
                 }
@@ -76,26 +174,14 @@ struct ChatView: View {
 
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                      withAnimation {
-                          viewModel.newConversation()
-                      }
-                  } label: {
-                      Image(systemName: "square.and.pencil")
-                          .foregroundStyle(.primary)
-                  }
+                        withAnimation {
+                            viewModel.newConversation()
+                        }
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .foregroundStyle(.primary)
+                    }
                 }
-            }
-            .sheet(isPresented: $showSettings) {
-                ChatSettingsView()
-                    #if os(macOS)
-                    .frame(minWidth: 400, minHeight: 300)
-                    #endif
-            }
-            .sheet(isPresented: $showModelPicker) {
-                ChatModelPickerView(mlxService: chatManager.mlxService)
-                    #if os(macOS)
-                    .frame(minWidth: 450, minHeight: 400)
-                    #endif
             }
         }
         .overlay(alignment: .top) {
@@ -111,25 +197,10 @@ struct ChatView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .alert("Notice", isPresented: Binding(
-            get: { viewModel.alertMessage != nil },
-            set: { if !$0 { viewModel.clearAlert() } }
-        )) {
-            Button("OK") {
-                viewModel.clearAlert()
-            }
-        } message: {
-            Text(viewModel.alertMessage ?? "")
-        }
-        .onChange(of: chatManager.mlxService.isLoadingModel) { _, isLoading in
-            if isLoading {
-                hideModelLoadingPopup = false
-            }
-        }
     }
-    
+
     // MARK: Model Menu
-    
+
     private var modelMenu: some View {
         Menu {
             Section {
@@ -186,168 +257,168 @@ struct ChatView: View {
 // MARK: - ChatSettingsView
 
 struct ChatSettingsView: View {
-  @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
 
-  var body: some View {
-      NavigationStack {
-          List {
-              Text("Settings coming soon...")
-          }
-          .navigationTitle("Settings")
-          #if os(iOS)
-          .navigationBarTitleDisplayMode(.inline)
-          #endif
-          .toolbar {
-              ToolbarItem(placement: .confirmationAction) {
-                  Button("Done") {
-                      dismiss()
-                  }
-              }
-          }
-      }
-  }
+    var body: some View {
+        NavigationStack {
+            List {
+                Text("Settings coming soon...")
+            }
+            .navigationTitle("Settings")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Model Picker View
 
 struct ChatModelPickerView: View {
-  let mlxService: MLXService
-  @Environment(\.dismiss) private var dismiss
+    let mlxService: MLXService
+    @Environment(\.dismiss) private var dismiss
 
-  private var downloadedModels: [MLXService.CachedModelInfo] {
-      mlxService.cachedModels.filter { $0.isDownloaded }
-  }
+    private var downloadedModels: [MLXService.CachedModelInfo] {
+        mlxService.cachedModels.filter { $0.isDownloaded }
+    }
 
-  private var availableModels: [MLXService.CachedModelInfo] {
-      mlxService.cachedModels.filter { !$0.isDownloaded }
-  }
+    private var availableModels: [MLXService.CachedModelInfo] {
+        mlxService.cachedModels.filter { !$0.isDownloaded }
+    }
 
-  var body: some View {
-      NavigationStack {
-          List {
-              if mlxService.isLoadingModel {
-                  Section("Loading") {
-                      HStack {
-                          VStack(alignment: .leading, spacing: 4) {
-                              Text(mlxService.loadingModelName ?? "Model")
-                                  .font(.headline)
-                              Text(mlxService.statusMessage)
-                                  .font(.subheadline)
-                                  .foregroundStyle(.secondary)
-                          }
-                          Spacer()
-                          ProgressView()
-                      }
-                      .padding(.vertical, 4)
-                  }
-              }
+    var body: some View {
+        NavigationStack {
+            List {
+                if mlxService.isLoadingModel {
+                    Section("Loading") {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(mlxService.loadingModelName ?? "Model")
+                                    .font(.headline)
+                                Text(mlxService.statusMessage)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            ProgressView()
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
 
-              if !downloadedModels.isEmpty {
-                  Section("Downloaded") {
-                      ForEach(downloadedModels) { info in
-                          Button {
-                              if let preset = info.preset {
-                                  loadModel(preset)
-                              }
-                          } label: {
-                              HStack {
-                                  VStack(alignment: .leading) {
-                                      Text(info.displayName)
-                                          .foregroundStyle(.primary)
-                                      Text(info.formattedSize)
-                                          .font(.caption)
-                                          .foregroundStyle(.secondary)
-                                  }
+                if !downloadedModels.isEmpty {
+                    Section("Downloaded") {
+                        ForEach(downloadedModels) { info in
+                            Button {
+                                if let preset = info.preset {
+                                    loadModel(preset)
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(info.displayName)
+                                            .foregroundStyle(.primary)
+                                        Text(info.formattedSize)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
 
-                                  Spacer()
+                                    Spacer()
 
-                                  if info.preset?.supportsImages == true {
-                                      Image(systemName: "camera.fill")
-                                          .font(.caption)
-                                          .foregroundStyle(.secondary)
-                                  }
+                                    if info.preset?.supportsImages == true {
+                                        Image(systemName: "camera.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
 
-                                  if mlxService.loadingModelName == info.displayName,
-                                     mlxService.isLoadingModel {
-                                      ProgressView()
-                                  }
-                              }
-                          }
-                          .disabled(mlxService.isLoadingModel)
-                      }
-                  }
-              }
+                                    if mlxService.loadingModelName == info.displayName,
+                                       mlxService.isLoadingModel {
+                                        ProgressView()
+                                    }
+                                }
+                            }
+                            .disabled(mlxService.isLoadingModel)
+                        }
+                    }
+                }
 
-              if !availableModels.isEmpty {
-                  Section("Available to Download") {
-                      ForEach(availableModels) { info in
-                          Button {
-                              if let preset = info.preset {
-                                  loadModel(preset)
-                              }
-                          } label: {
-                              HStack {
-                                  Text(info.displayName)
-                                      .foregroundStyle(.primary)
+                if !availableModels.isEmpty {
+                    Section("Available to Download") {
+                        ForEach(availableModels) { info in
+                            Button {
+                                if let preset = info.preset {
+                                    loadModel(preset)
+                                }
+                            } label: {
+                                HStack {
+                                    Text(info.displayName)
+                                        .foregroundStyle(.primary)
 
-                                  Spacer()
+                                    Spacer()
 
-                                  if info.preset?.supportsImages == true {
-                                      Image(systemName: "camera.fill")
-                                          .font(.caption)
-                                          .foregroundStyle(.secondary)
-                                  }
+                                    if info.preset?.supportsImages == true {
+                                        Image(systemName: "camera.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
 
-                                  if mlxService.loadingModelName == info.displayName,
-                                     mlxService.isLoadingModel {
-                                      ProgressView(value: mlxService.downloadProgress)
-                                          .frame(width: 60)
-                                  } else {
-                                      Image(systemName: "arrow.down.circle")
-                                          .foregroundStyle(.secondary)
-                                  }
-                              }
-                          }
-                          .disabled(mlxService.isLoadingModel)
-                      }
-                  }
-              }
+                                    if mlxService.loadingModelName == info.displayName,
+                                       mlxService.isLoadingModel {
+                                        ProgressView(value: mlxService.downloadProgress)
+                                            .frame(width: 60)
+                                    } else {
+                                        Image(systemName: "arrow.down.circle")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .disabled(mlxService.isLoadingModel)
+                        }
+                    }
+                }
 
-              if mlxService.isModelLoaded {
-                  Section {
-                      Button(role: .destructive) {
-                          mlxService.unloadModel()
-                          dismiss()
-                      } label: {
-                          Label("Unload Model", systemImage: "xmark.circle")
-                      }
-                  }
-              }
-          }
-          .navigationTitle("Switch Model")
-          #if os(iOS)
-          .navigationBarTitleDisplayMode(.inline)
-          #endif
-          .toolbar {
-              ToolbarItem(placement: .cancellationAction) {
-                  Button("Cancel") {
-                      dismiss()
-                  }
-              }
-          }
-      }
-  }
+                if mlxService.isModelLoaded {
+                    Section {
+                        Button(role: .destructive) {
+                            mlxService.unloadModel()
+                            dismiss()
+                        } label: {
+                            Label("Unload Model", systemImage: "xmark.circle")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Switch Model")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
 
-  private func loadModel(_ preset: MLXService.ModelPreset) {
-      Task { @MainActor in
-          do {
-              try await mlxService.loadModel(preset)
-              dismiss()
-          } catch {
-              print("Failed to load model: \(error)")
-          }
-      }
-  }
+    private func loadModel(_ preset: MLXService.ModelPreset) {
+        Task { @MainActor in
+            do {
+                try await mlxService.loadModel(preset)
+                dismiss()
+            } catch {
+                print("Failed to load model: \(error)")
+            }
+        }
+    }
 }
 
 // MARK: - Model Loading Popup

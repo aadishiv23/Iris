@@ -41,6 +41,9 @@ class ChatManager {
 
     /// Indicates if a model switch is pending for conversation selection.
     var pendingModelSwitch: PendingModelSwitch?
+    
+    /// Tracks whether sidebar is open.
+    var isSidebarOpen = false
 
     // MARK: - Dependencies
 
@@ -385,6 +388,24 @@ extension ChatManager {
         var modelDisplayName: String {
             let parts = requiredModelIdentifier.split(separator: "/")
             return String(parts.last ?? Substring(requiredModelIdentifier))
+        }
+    }
+}
+
+// MARK: - Sidebar
+
+extension ChatManager {
+    /// Toggle and present the sidebar.
+    func toggleSidebar() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            isSidebarOpen.toggle()
+        }
+    }
+    
+    /// Close sidebar
+    func closeSidebar() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            isSidebarOpen = false
         }
     }
 }

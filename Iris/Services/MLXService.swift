@@ -149,8 +149,10 @@ class MLXService {
         switch configuration.id {
         case .id(let id, _):
             // MLX downloads to: {cachesDir}/models/{org}/{model}/
-            var url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-                .appendingPathComponent("models", isDirectory: true)
+            guard var url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+                return nil
+            }
+            url.appendPathComponent("models", isDirectory: true)
 
             for component in id.split(separator: "/") {
                 url.appendPathComponent(String(component), isDirectory: true)
@@ -545,6 +547,11 @@ class MLXService {
         }
     }
     
+    /// Maximum number of messages to keep in conversation history to prevent OOM.
+    /// VLM models use a lower limit due to higher memory requirements.
+    private static let maxLLMHistoryMessages = 20
+    private static let maxVLMHistoryMessages = 10
+
     /// Generates with conversation history
     func generateStream(
       messages: [Message],
@@ -557,9 +564,12 @@ class MLXService {
       tokenCount = 0
 
       return AsyncStream { continuation in
+          // Flag to ensure finish() is only called once (prevents race conditions)
+          let finishOnce = FinishOnce(continuation: continuation)
+
           currentGenerationTask = Task { [weak self] in
               guard let self, let container = modelContainer else {
-                  continuation.finish()
+                  finishOnce.finish()
                   return
               }
 
@@ -567,12 +577,27 @@ class MLXService {
                   // Clear GPU cache before generation to free memory
                   MLX.GPU.clearCache()
 
+                  // Truncate conversation history to prevent OOM
+                  // VLM models get a lower limit due to higher memory requirements
+                  let maxMessages = currentPreset?.modelType == .vlm
+                      ? Self.maxVLMHistoryMessages
+                      : Self.maxLLMHistoryMessages
+
+                  let truncatedMessages: [Message]
+                  if messages.count > maxMessages {
+                      // Keep the most recent messages
+                      truncatedMessages = Array(messages.suffix(maxMessages))
+                      NSLog("[MLXService] Truncated history from %d to %d messages", messages.count, truncatedMessages.count)
+                  } else {
+                      truncatedMessages = messages
+                  }
+
                   // Find the last user message index (for image attachment)
-                  let lastUserIndex = messages.lastIndex { $0.role == .user }
+                  let lastUserIndex = truncatedMessages.lastIndex { $0.role == .user }
 
                   let chatMessages: [Chat.Message] = [
                       .system(config.systemPrompt)
-                  ] + messages.enumerated().map { index, message in
+                  ] + truncatedMessages.enumerated().map { index, message in
                       let role: Chat.Message.Role = {
                           switch message.role {
                           case .user: return .user
@@ -640,7 +665,7 @@ class MLXService {
                           context: context
                       ) { tokens in
                           if Task.isCancelled {
-                              continuation.finish()
+                              finishOnce.finish()
                               return .stop
                           }
 
@@ -667,14 +692,33 @@ class MLXService {
                       self?.finalizeMetrics()
                   }
 
-                  continuation.finish()
+                  finishOnce.finish()
 
               } catch {
                   print("[MLXService] Error during generation: \(error)")
-                  continuation.finish()
+                  finishOnce.finish()
               }
           }
       }
+    }
+
+    /// Thread-safe wrapper to ensure AsyncStream continuation is finished exactly once
+    private final class FinishOnce: @unchecked Sendable {
+        private let continuation: AsyncStream<String>.Continuation
+        private var finished = false
+        private let lock = NSLock()
+
+        init(continuation: AsyncStream<String>.Continuation) {
+            self.continuation = continuation
+        }
+
+        func finish() {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !finished else { return }
+            finished = true
+            continuation.finish()
+        }
     }
 
     /// Finalizes and stores generation metrics.
@@ -738,6 +782,7 @@ class MLXService {
 
 extension UIImage {
     /// Resizes image to fit within maxDimension while preserving aspect ratio.
+    /// Uses UIGraphicsImageRenderer for better memory management.
     /// Returns nil if resizing fails.
     func resizedForVLM(maxDimension: CGFloat) -> UIImage? {
         let currentMax = max(size.width, size.height)
@@ -749,10 +794,14 @@ extension UIImage {
             height: floor(size.height * scale)
         )
 
-        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
-        defer { UIGraphicsEndImageContext() }
+        // Use UIGraphicsImageRenderer for automatic memory management
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        format.opaque = false
 
-        draw(in: CGRect(origin: .zero, size: newSize))
-        return UIGraphicsGetImageFromCurrentImageContext()
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+        return renderer.image { _ in
+            draw(in: CGRect(origin: .zero, size: newSize))
+        }
     }
 }

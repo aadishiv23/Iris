@@ -45,6 +45,18 @@ struct ChatConversationView: View {
 
     /// Whether to show the scroll-to-bottom button
     @State private var showScrollButton = false
+    
+    /// Whether the user is near the bottom of the list
+    @State private var isNearBottom = true
+    
+    /// Trigger to align the last user message to the top on send
+    @State private var pendingScrollToUserMessageTop = false
+
+    /// Follow the streaming assistant response unless user scrolls away
+    @State private var followStreaming = false
+
+    /// When true, keeps user message pinned at top (ChatGPT-style) until user scrolls
+    @State private var userMessagePinnedToTop = false
 
     // MARK: Body
 
@@ -60,6 +72,10 @@ struct ChatConversationView: View {
                 onSend: {
                     onSend()
                     isInputFocused = false // dismiss keyboard
+                    pendingScrollToUserMessageTop = true
+                    // Don't follow streaming - keep user message at top (ChatGPT-style)
+                    followStreaming = false
+                    userMessagePinnedToTop = true
                 },
                 onStop: onStop,
                 onPickImages: onPickImages,
@@ -78,6 +94,7 @@ struct ChatConversationView: View {
                     LazyVStack(spacing: 18) {
                         ForEach(messages) { message in
                             MessageRow(message: message)
+                                .id(message.id)
                                 .transition(
                                     .asymmetric(
                                         insertion: .scale(scale: 0.9)
@@ -116,24 +133,61 @@ struct ChatConversationView: View {
                 .scrollIndicators(.hidden)
                 .onPreferenceChange(ScrollOffsetKey.self) { bottomMinY in
                     let distanceFromBottom = max(0, bottomMinY - scrollGeo.size.height)
-                    let shouldShow = distanceFromBottom > 80
+                    let nearBottom = distanceFromBottom <= 80
+                    let shouldShow = !nearBottom
+                    if nearBottom != isNearBottom {
+                        isNearBottom = nearBottom
+                    }
                     if shouldShow != showScrollButton {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             showScrollButton = shouldShow
                         }
                     }
+                    if !nearBottom && followStreaming {
+                        followStreaming = false
+                    }
                 }
                 .onChange(of: messages.count) { _, _ in
-                    scrollToBottom(proxy: proxy, animated: true)
+                    if pendingScrollToUserMessageTop,
+                       let lastUserId = messages.last(where: { $0.role == .user })?.id {
+                        scrollToMessage(id: lastUserId, proxy: proxy, anchor: .top, animated: true)
+                        pendingScrollToUserMessageTop = false
+                    } else if isNearBottom {
+                        // Don't auto-scroll when an empty assistant placeholder is added
+                        // This keeps the user message pinned at top until content starts streaming
+                        let isEmptyAssistantPlaceholder = messages.last?.role == .assistant &&
+                                                          messages.last?.content.isEmpty == true
+                        if !isEmptyAssistantPlaceholder {
+                            scrollToBottom(proxy: proxy, animated: true)
+                        }
+                    }
                 }
-                .onChange(of: messages.last?.content) { _, _ in
+                .onChange(of: messages.last?.content) { _, newContent in
+                    // Only auto-scroll when there's actual content (not on empty placeholder)
+                    guard let content = newContent, !content.isEmpty else { return }
+
+                    // Don't auto-scroll if user message is pinned to top (ChatGPT-style)
+                    guard !userMessagePinnedToTop else { return }
+
                     // No animation during streaming to prevent jitter
-                    scrollToBottom(proxy: proxy, animated: false)
+                    if followStreaming {
+                        scrollToBottom(proxy: proxy, animated: false)
+                    } else if isNearBottom {
+                        scrollToBottom(proxy: proxy, animated: false)
+                    }
+                }
+                .onChange(of: isGenerating) { _, newValue in
+                    if !newValue {
+                        followStreaming = false
+                        userMessagePinnedToTop = false
+                    }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if showScrollButton {
                         ScrollToBottomButton {
                             scrollToBottom(proxy: proxy)
+                            userMessagePinnedToTop = false
+                            followStreaming = isGenerating
                         }
                         .padding(.trailing, 14)
                         .padding(.bottom, 80)
@@ -154,6 +208,21 @@ struct ChatConversationView: View {
             }
         } else {
             proxy.scrollTo("bottom", anchor: .bottom)
+        }
+    }
+    
+    private func scrollToMessage(
+        id: UUID,
+        proxy: ScrollViewProxy,
+        anchor: UnitPoint = .top,
+        animated: Bool = true
+    ) {
+        if animated {
+            withAnimation(.easeOut(duration: 0.3)) {
+                proxy.scrollTo(id, anchor: anchor)
+            }
+        } else {
+            proxy.scrollTo(id, anchor: anchor)
         }
     }
 }
@@ -279,4 +348,3 @@ struct ChatConversationView: View {
      )
      .preferredColorScheme(.dark)
  }
-

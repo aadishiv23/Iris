@@ -16,8 +16,8 @@ This document outlines the implementation plan for adding voice capabilities to 
    - [Option B: Apple Speech Framework](#option-b-apple-speech-framework)
    - [Option C: MLX Whisper](#option-c-mlx-whisper)
 4. [Text-to-Speech Options](#text-to-speech-options)
-   - [Option A: AVSpeechSynthesizer](#option-a-avspeechsynthesizer-quick-start)
-   - [Option B: Neural TTS](#option-b-neural-tts-future)
+   - [Option A: MLX Audio (Marvis TTS)](#option-a-mlx-audio-marvis-tts-recommended)
+   - [Option B: AVSpeechSynthesizer](#option-b-avspeechsynthesizer-fallback)
 5. [Voice Service Implementation](#voice-service-implementation)
 6. [UI Components](#ui-components)
 7. [Integration with ChatManager](#integration-with-chatmanager)
@@ -434,9 +434,300 @@ class MLXWhisperService {
 
 ## Text-to-Speech Options
 
-### Option A: AVSpeechSynthesizer (Quick Start)
+### Option A: MLX Audio (Marvis TTS) - Recommended
 
-**Best for**: Fast implementation, works immediately, no downloads
+**Best for**: High-quality neural TTS, on-device, streaming support, consistent with MLX stack
+
+[MLX Audio](https://github.com/Blaizzy/mlx-audio) is a Swift package providing TTS, STT, and speech-to-speech capabilities built on Apple's MLX framework.
+
+#### Installation
+
+**Via Xcode:**
+1. Select File → Add Package Dependencies
+2. Enter: `https://github.com/Blaizzy/mlx-audio.git`
+3. Choose version (0.2.5+) and add `mlx-swift-audio` to your target
+
+**Via Package.swift:**
+```swift
+dependencies: [
+    .package(url: "https://github.com/Blaizzy/mlx-audio.git", from: "0.2.5")
+],
+targets: [
+    .target(
+        name: "Iris",
+        dependencies: [
+            .product(name: "mlx-swift-audio", package: "mlx-audio")
+        ]
+    )
+]
+```
+
+#### Platform Requirements
+- macOS 14.0+
+- iOS 16.0+
+
+#### Available Models
+
+| Model | Size | Best For |
+|-------|------|----------|
+| **Marvis TTS** | ~250MB | Real-time streaming, conversational |
+| **Kokoro** | ~82MB | Multilingual, smaller footprint |
+| **CSM-1B** | ~1GB | Voice cloning with reference audio |
+
+#### Implementation
+
+```swift
+import MLXAudio
+import AVFoundation
+
+@Observable
+@MainActor
+class MLXTTSService {
+    private var session: MarvisSession?
+
+    var isModelLoaded = false
+    var isLoading = false
+    var isSpeaking = false
+    var loadingProgress: Double = 0
+
+    // Voice presets available in Marvis
+    enum Voice {
+        case conversationalA  // Default conversational voice
+        case conversationalB
+        // More voices available - check MLXAudio documentation
+
+        var marvisVoice: MarvisSession.Voice {
+            switch self {
+            case .conversationalA: return .conversationalA
+            case .conversationalB: return .conversationalB
+            }
+        }
+    }
+
+    // MARK: - Model Loading
+
+    func loadModel(voice: Voice = .conversationalA) async throws {
+        isLoading = true
+        defer { isLoading = false }
+
+        // MarvisSession downloads model on first use
+        session = try await MarvisSession(
+            voice: voice.marvisVoice,
+            playbackEnabled: true  // Auto-plays audio
+        )
+
+        isModelLoaded = true
+    }
+
+    // MARK: - Basic Speech
+
+    /// Generate and play speech for text
+    func speak(_ text: String) async throws {
+        guard let session else {
+            throw TTSError.modelNotLoaded
+        }
+
+        isSpeaking = true
+        defer { isSpeaking = false }
+
+        let result = try await session.generate(for: text)
+        print("Generated \(result.sampleCount) samples @ \(result.sampleRate) Hz")
+    }
+
+    // MARK: - Streaming Speech (for LLM output)
+
+    /// Stream speech as audio chunks - ideal for LLM streaming output
+    func speakStreaming(_ text: String, interval: Double = 0.5) async throws {
+        guard let session else {
+            throw TTSError.modelNotLoaded
+        }
+
+        isSpeaking = true
+        defer { isSpeaking = false }
+
+        for try await chunk in session.stream(text: text, streamingInterval: interval) {
+            // Each chunk contains PCM samples that play automatically
+            print("Chunk: samples=\(chunk.sampleCount) rtf=\(chunk.realTimeFactor)")
+
+            // Real-time factor < 1.0 means faster than real-time
+            // (good for keeping up with streaming text)
+        }
+    }
+
+    // MARK: - Raw Audio (for custom processing)
+
+    /// Generate raw PCM audio without auto-playback
+    func generateRaw(_ text: String) async throws -> (audio: [Float], sampleRate: Int) {
+        // Create session without playback for raw audio access
+        let rawSession = try await MarvisSession(
+            voice: .conversationalA,
+            playbackEnabled: false
+        )
+
+        let result = try await rawSession.generateRaw(for: text)
+        return (result.audio, result.sampleRate)
+    }
+
+    /// Save generated audio to file
+    func saveToFile(_ text: String, url: URL) async throws {
+        let (audio, sampleRate) = try await generateRaw(text)
+
+        // Convert to WAV file
+        let audioData = try createWAVData(from: audio, sampleRate: sampleRate)
+        try audioData.write(to: url)
+    }
+
+    private func createWAVData(from samples: [Float], sampleRate: Int) throws -> Data {
+        var data = Data()
+
+        // WAV header
+        let numChannels: UInt16 = 1
+        let bitsPerSample: UInt16 = 16
+        let byteRate = UInt32(sampleRate * Int(numChannels) * Int(bitsPerSample) / 8)
+        let blockAlign = numChannels * bitsPerSample / 8
+        let dataSize = UInt32(samples.count * 2)
+        let fileSize = 36 + dataSize
+
+        // RIFF header
+        data.append(contentsOf: "RIFF".utf8)
+        data.append(contentsOf: withUnsafeBytes(of: fileSize.littleEndian) { Array($0) })
+        data.append(contentsOf: "WAVE".utf8)
+
+        // fmt chunk
+        data.append(contentsOf: "fmt ".utf8)
+        data.append(contentsOf: withUnsafeBytes(of: UInt32(16).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian) { Array($0) }) // PCM
+        data.append(contentsOf: withUnsafeBytes(of: numChannels.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: UInt32(sampleRate).littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: byteRate.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: blockAlign.littleEndian) { Array($0) })
+        data.append(contentsOf: withUnsafeBytes(of: bitsPerSample.littleEndian) { Array($0) })
+
+        // data chunk
+        data.append(contentsOf: "data".utf8)
+        data.append(contentsOf: withUnsafeBytes(of: dataSize.littleEndian) { Array($0) })
+
+        // Convert Float samples to Int16
+        for sample in samples {
+            let clamped = max(-1.0, min(1.0, sample))
+            let int16Sample = Int16(clamped * Float(Int16.max))
+            data.append(contentsOf: withUnsafeBytes(of: int16Sample.littleEndian) { Array($0) })
+        }
+
+        return data
+    }
+
+    // MARK: - Errors
+
+    enum TTSError: Error, LocalizedError {
+        case modelNotLoaded
+        case generationFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .modelNotLoaded:
+                return "TTS model not loaded. Call loadModel() first."
+            case .generationFailed(let reason):
+                return "TTS generation failed: \(reason)"
+            }
+        }
+    }
+}
+```
+
+#### Streaming TTS with LLM Output
+
+```swift
+// In ChatManager - speak as LLM streams
+class StreamingTTSController {
+    private let ttsService: MLXTTSService
+    private var buffer = ""
+    private var speakingTask: Task<Void, Never>?
+
+    init(ttsService: MLXTTSService) {
+        self.ttsService = ttsService
+    }
+
+    /// Feed streaming LLM chunks
+    func feed(_ chunk: String) {
+        buffer += chunk
+
+        // Extract complete sentences for natural speech
+        let sentencePattern = #"[^.!?\n]+[.!?\n]+"#
+
+        while let match = buffer.range(of: sentencePattern, options: .regularExpression) {
+            let sentence = String(buffer[match]).trimmingCharacters(in: .whitespacesAndNewlines)
+            buffer = String(buffer[match.upperBound...])
+
+            if !sentence.isEmpty {
+                queueSentence(sentence)
+            }
+        }
+    }
+
+    /// Call when LLM finishes
+    func finish() {
+        let remaining = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !remaining.isEmpty {
+            queueSentence(remaining)
+        }
+        buffer = ""
+    }
+
+    private var sentenceQueue: [String] = []
+    private var isProcessing = false
+
+    private func queueSentence(_ sentence: String) {
+        sentenceQueue.append(sentence)
+        processQueue()
+    }
+
+    private func processQueue() {
+        guard !isProcessing, !sentenceQueue.isEmpty else { return }
+
+        isProcessing = true
+        let sentence = sentenceQueue.removeFirst()
+
+        speakingTask = Task {
+            do {
+                try await ttsService.speakStreaming(sentence, interval: 0.3)
+            } catch {
+                print("TTS error: \(error)")
+            }
+
+            await MainActor.run {
+                self.isProcessing = false
+                self.processQueue()
+            }
+        }
+    }
+
+    func stop() {
+        speakingTask?.cancel()
+        sentenceQueue.removeAll()
+        buffer = ""
+        isProcessing = false
+    }
+}
+```
+
+#### Pros & Cons
+
+| Pros | Cons |
+|------|------|
+| High-quality neural voice | Model download required (~250MB) |
+| Real-time streaming support | Initial model load time |
+| Fully on-device, private | Higher battery usage than AVSpeech |
+| Consistent with MLX stack | Requires iOS 16+ / macOS 14+ |
+| GPU accelerated on Apple Silicon | |
+
+---
+
+### Option B: AVSpeechSynthesizer (Fallback)
+
+**Best for**: Quick fallback, no downloads, maximum compatibility
+
+Use as fallback when MLX Audio model isn't loaded or for low-power scenarios.
 
 #### Implementation
 
@@ -444,23 +735,14 @@ class MLXWhisperService {
 import AVFoundation
 
 @Observable
-class TTSService {
+class SystemTTSService {
     private let synthesizer = AVSpeechSynthesizer()
     private var speechDelegate: SpeechDelegate?
 
     var isSpeaking: Bool { synthesizer.isSpeaking }
-    var isPaused: Bool { synthesizer.isPaused }
 
-    // Available voices
-    static var availableVoices: [AVSpeechSynthesisVoice] {
-        AVSpeechSynthesisVoice.speechVoices().filter { voice in
-            voice.language.starts(with: "en")  // English voices
-        }
-    }
-
-    // Recommended voices for natural sound
+    // Best available system voice
     static var recommendedVoice: AVSpeechSynthesisVoice? {
-        // Premium voices (iOS 17+)
         let premiumIdentifiers = [
             "com.apple.voice.premium.en-US.Zoe",
             "com.apple.voice.premium.en-US.Ava",
@@ -472,35 +754,13 @@ class TTSService {
                 return voice
             }
         }
-
-        // Fallback to best available
         return AVSpeechSynthesisVoice(language: "en-US")
     }
 
-    struct SpeechConfig {
-        var voice: AVSpeechSynthesisVoice?
-        var rate: Float = AVSpeechUtteranceDefaultSpeechRate  // 0.0 - 1.0
-        var pitch: Float = 1.0  // 0.5 - 2.0
-        var volume: Float = 1.0  // 0.0 - 1.0
-        var preUtteranceDelay: TimeInterval = 0
-        var postUtteranceDelay: TimeInterval = 0
-
-        static var `default`: SpeechConfig {
-            SpeechConfig(voice: TTSService.recommendedVoice)
-        }
-    }
-
-    // MARK: - Basic Speech
-
-    func speak(_ text: String, config: SpeechConfig = .default) {
+    func speak(_ text: String) {
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = config.voice ?? Self.recommendedVoice
-        utterance.rate = config.rate
-        utterance.pitchMultiplier = config.pitch
-        utterance.volume = config.volume
-        utterance.preUtteranceDelay = config.preUtteranceDelay
-        utterance.postUtteranceDelay = config.postUtteranceDelay
-
+        utterance.voice = Self.recommendedVoice
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
         synthesizer.speak(utterance)
     }
 
@@ -508,77 +768,43 @@ class TTSService {
         synthesizer.stopSpeaking(at: .immediate)
     }
 
-    func pause() {
-        synthesizer.pauseSpeaking(at: .word)
-    }
-
-    func resume() {
-        synthesizer.continueSpeaking()
-    }
-
-    // MARK: - Streaming Speech (for LLM output)
-
-    /// Speaks text in chunks, suitable for streaming LLM output
-    /// Queues sentences and speaks them sequentially
+    // Streaming support via sentence buffering
     private var pendingText = ""
-    private var speakingQueue: [String] = []
 
-    func speakStreaming(_ chunk: String, config: SpeechConfig = .default) {
+    func speakStreaming(_ chunk: String) {
         pendingText += chunk
 
-        // Extract complete sentences
-        let sentenceEndings = [".", "!", "?", "\n"]
+        // Speak complete sentences
+        while let range = pendingText.range(of: #"[.!?\n]"#, options: .regularExpression) {
+            let sentence = String(pendingText[..<range.upperBound])
+            pendingText = String(pendingText[range.upperBound...])
 
-        for ending in sentenceEndings {
-            while let range = pendingText.range(of: ending) {
-                let sentence = String(pendingText[..<range.upperBound])
-                pendingText = String(pendingText[range.upperBound...])
-
-                let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    queueSentence(trimmed, config: config)
-                }
+            let trimmed = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                speak(trimmed)
             }
         }
     }
 
-    /// Call when streaming is complete to speak any remaining text
-    func finishStreaming(config: SpeechConfig = .default) {
+    func finishStreaming() {
         let remaining = pendingText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !remaining.isEmpty {
-            queueSentence(remaining, config: config)
+            speak(remaining)
         }
         pendingText = ""
     }
 
-    private func queueSentence(_ sentence: String, config: SpeechConfig) {
-        let utterance = AVSpeechUtterance(string: sentence)
-        utterance.voice = config.voice ?? Self.recommendedVoice
-        utterance.rate = config.rate
-        utterance.pitchMultiplier = config.pitch
-        utterance.volume = config.volume
-
-        synthesizer.speak(utterance)
-    }
-
-    // MARK: - Delegate for callbacks
-
-    func onSpeechFinished(_ handler: @escaping () -> Void) {
+    func onFinished(_ handler: @escaping () -> Void) {
         speechDelegate = SpeechDelegate(onFinished: handler)
         synthesizer.delegate = speechDelegate
     }
 
     private class SpeechDelegate: NSObject, AVSpeechSynthesizerDelegate {
         let onFinished: () -> Void
-
-        init(onFinished: @escaping () -> Void) {
-            self.onFinished = onFinished
-        }
+        init(onFinished: @escaping () -> Void) { self.onFinished = onFinished }
 
         func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-            if !synthesizer.isSpeaking {
-                onFinished()
-            }
+            if !synthesizer.isSpeaking { onFinished() }
         }
     }
 }
@@ -588,121 +814,37 @@ class TTSService {
 
 | Pros | Cons |
 |------|------|
-| No setup required | Robotic voice quality |
-| Works offline | Limited voice options |
-| Low latency | No voice cloning |
-| Battery efficient | Less expressive |
-
----
-
-### Option B: Neural TTS (Future)
-
-**Best for**: Natural-sounding speech, voice cloning, emotional expression
-
-#### Options to Consider
-
-1. **Coqui TTS** (via ONNX or Core ML conversion)
-2. **Bark** (Suno AI - text to audio with emotion)
-3. **Piper** (fast, local TTS)
-4. **ElevenLabs API** (cloud, high quality)
-
-#### Placeholder Implementation
-
-```swift
-import Foundation
-
-protocol NeuralTTSEngine {
-    func loadModel() async throws
-    func synthesize(_ text: String) async throws -> Data  // Audio data
-    func synthesizeStreaming(_ text: String) -> AsyncStream<Data>
-}
-
-// Example: ElevenLabs API (cloud-based)
-class ElevenLabsTTS: NeuralTTSEngine {
-    private let apiKey: String
-    private let voiceId: String
-
-    init(apiKey: String, voiceId: String = "default") {
-        self.apiKey = apiKey
-        self.voiceId = voiceId
-    }
-
-    func loadModel() async throws {
-        // No-op for API-based TTS
-    }
-
-    func synthesize(_ text: String) async throws -> Data {
-        let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(voiceId)")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
-
-        let body: [String: Any] = [
-            "text": text,
-            "model_id": "eleven_monolingual_v1",
-            "voice_settings": [
-                "stability": 0.5,
-                "similarity_boost": 0.5
-            ]
-        ]
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return data
-    }
-
-    func synthesizeStreaming(_ text: String) -> AsyncStream<Data> {
-        // ElevenLabs supports streaming via websockets
-        // Implementation would use URLSession.webSocketTask
-        fatalError("Streaming TTS not implemented")
-    }
-}
-
-// Example: Local Neural TTS (future)
-class LocalNeuralTTS: NeuralTTSEngine {
-    // Would use Core ML or ONNX Runtime
-    // Models: Piper, Coqui, etc. converted to mlpackage
-
-    func loadModel() async throws {
-        // Load Core ML model
-    }
-
-    func synthesize(_ text: String) async throws -> Data {
-        // Run inference
-        fatalError("Not implemented")
-    }
-
-    func synthesizeStreaming(_ text: String) -> AsyncStream<Data> {
-        fatalError("Not implemented")
-    }
-}
-```
+| No download required | Robotic voice quality |
+| Works offline | Less natural sounding |
+| Low battery usage | Limited expressiveness |
+| Maximum compatibility | |
 
 ---
 
 ## Voice Service Implementation
 
-Unified service combining STT and TTS:
+Unified service combining STT (WhisperKit) and TTS (MLX Audio):
 
 ```swift
 import Foundation
 import AVFoundation
+import MLXAudio
 
 @Observable
 @MainActor
 class VoiceService {
     // MARK: - Services
 
-    private let sttService: WhisperSTTService  // or AppleSpeechSTTService
-    private let ttsService: TTSService
+    private let sttService: WhisperSTTService
+    private let ttsService: MLXTTSService
+    private let fallbackTTS: SystemTTSService  // Fallback when MLX not loaded
+    private var streamingController: StreamingTTSController?
 
     // MARK: - State
 
     enum VoiceState {
         case idle
+        case loadingModels
         case listening
         case transcribing
         case speaking
@@ -712,25 +854,55 @@ class VoiceService {
     var currentTranscription = ""
     var error: Error?
 
+    // Model loading progress
+    var sttModelLoaded = false
+    var ttsModelLoaded = false
+    var loadingProgress: Double = 0
+
     // Settings
     var autoSendAfterTranscription = false
     var autoSpeakResponses = true
+    var useFallbackTTS = false  // Use system TTS instead of MLX
 
     init() {
         self.sttService = WhisperSTTService()
-        self.ttsService = TTSService()
+        self.ttsService = MLXTTSService()
+        self.fallbackTTS = SystemTTSService()
     }
 
     // MARK: - Setup
 
+    /// Load both STT and TTS models
     func setup() async throws {
-        // Request permissions
+        // Request permissions first
         guard await PermissionsManager.requestMicrophonePermission() else {
             throw VoiceError.microphonePermissionDenied
         }
 
-        // Load Whisper model
-        try await sttService.loadModel(.base)
+        state = .loadingModels
+
+        // Load models in parallel
+        async let sttLoad: () = loadSTTModel()
+        async let ttsLoad: () = loadTTSModel()
+
+        do {
+            try await sttLoad
+            try await ttsLoad
+        } catch {
+            self.error = error
+        }
+
+        state = .idle
+    }
+
+    private func loadSTTModel() async throws {
+        try await sttService.loadModel(.base)  // ~140MB
+        sttModelLoaded = true
+    }
+
+    private func loadTTSModel() async throws {
+        try await ttsService.loadModel(voice: .conversationalA)  // ~250MB
+        ttsModelLoaded = true
     }
 
     // MARK: - Voice Input (Tap to Toggle)
@@ -747,6 +919,11 @@ class VoiceService {
     }
 
     private func startListening() async {
+        guard sttModelLoaded else {
+            error = VoiceError.modelNotLoaded
+            return
+        }
+
         state = .listening
         currentTranscription = ""
 
@@ -777,36 +954,63 @@ class VoiceService {
 
     // MARK: - Voice Output
 
-    func speak(_ text: String) {
+    /// Speak a complete text (non-streaming)
+    func speak(_ text: String) async {
         guard autoSpeakResponses else { return }
+
         state = .speaking
-        ttsService.speak(text)
-        ttsService.onSpeechFinished { [weak self] in
-            Task { @MainActor in
-                self?.state = .idle
+        defer { state = .idle }
+
+        if ttsModelLoaded && !useFallbackTTS {
+            do {
+                try await ttsService.speak(text)
+            } catch {
+                // Fall back to system TTS on error
+                fallbackTTS.speak(text)
             }
+        } else {
+            fallbackTTS.speak(text)
         }
     }
 
-    func speakStreaming(_ chunk: String) {
+    /// Start streaming TTS controller for LLM output
+    func beginStreamingSpeech() {
         guard autoSpeakResponses else { return }
-        if state != .speaking {
-            state = .speaking
+
+        if ttsModelLoaded && !useFallbackTTS {
+            streamingController = StreamingTTSController(ttsService: ttsService)
         }
-        ttsService.speakStreaming(chunk)
+        state = .speaking
     }
 
-    func finishSpeaking() {
-        ttsService.finishStreaming()
-        ttsService.onSpeechFinished { [weak self] in
-            Task { @MainActor in
-                self?.state = .idle
-            }
+    /// Feed a chunk of streaming LLM text
+    func feedStreamingChunk(_ chunk: String) {
+        guard autoSpeakResponses else { return }
+
+        if let controller = streamingController {
+            controller.feed(chunk)
+        } else {
+            // Fallback to system TTS streaming
+            fallbackTTS.speakStreaming(chunk)
         }
     }
 
+    /// Finish streaming speech
+    func finishStreamingSpeech() {
+        if let controller = streamingController {
+            controller.finish()
+            streamingController = nil
+        } else {
+            fallbackTTS.finishStreaming()
+        }
+        state = .idle
+    }
+
+    /// Stop all speech immediately
     func stopSpeaking() {
-        ttsService.stop()
+        streamingController?.stop()
+        streamingController = nil
+        fallbackTTS.stop()
         state = .idle
     }
 
@@ -824,7 +1028,7 @@ class VoiceService {
             case .speechRecognitionPermissionDenied:
                 return "Speech recognition permission is required."
             case .modelNotLoaded:
-                return "Voice model is not loaded."
+                return "Voice models are not loaded. Please wait for setup to complete."
             }
         }
     }
@@ -1131,36 +1335,56 @@ func sendMessage(_ content: String) async {
 
 ## Summary Checklist
 
-### Phase 1: Basic Voice Input (STT)
-- [ ] Add microphone permission to Info.plist
-- [ ] Add WhisperKit dependency
-- [ ] Create WhisperSTTService
+### Phase 1: Dependencies & Permissions
+- [ ] Add microphone permission to Info.plist (`NSMicrophoneUsageDescription`)
+- [ ] Add WhisperKit package: `https://github.com/argmaxinc/WhisperKit.git`
+- [ ] Add MLX Audio package: `https://github.com/Blaizzy/mlx-audio.git`
+
+### Phase 2: Speech-to-Text (STT)
+- [ ] Create `WhisperSTTService` class
+- [ ] Implement model loading with progress
+- [ ] Implement recording start/stop
+- [ ] Implement transcription
+
+### Phase 3: Text-to-Speech (TTS)
+- [ ] Create `MLXTTSService` class with MarvisSession
+- [ ] Create `SystemTTSService` as fallback
+- [ ] Implement streaming TTS controller for LLM output
+- [ ] Add sentence buffering for natural speech
+
+### Phase 4: Unified Voice Service
+- [ ] Create `VoiceService` combining STT + TTS
+- [ ] Implement parallel model loading
+- [ ] Add tap-to-toggle voice input
+- [ ] Add streaming speech for LLM responses
+
+### Phase 5: UI Components
 - [ ] Add microphone button to input bar
-- [ ] Integrate with ChatManager
+- [ ] Add voice status indicator
+- [ ] Add speaker button to message bubbles (optional)
+- [ ] Add voice settings in settings view
 
-### Phase 2: Basic Voice Output (TTS)
-- [ ] Create TTSService with AVSpeechSynthesizer
-- [ ] Add speaker button to message bubbles
-- [ ] Add auto-speak toggle in settings
-- [ ] Implement streaming TTS
+### Phase 6: ChatManager Integration
+- [ ] Wire voice transcription to message input
+- [ ] Add streaming TTS during LLM generation
+- [ ] Add auto-send after transcription (optional)
+- [ ] Handle cancellation gracefully
 
-### Phase 3: Full Voice Chat
-- [ ] Create unified VoiceService
-- [ ] Add voice status indicators
-- [ ] Implement tap-to-toggle flow
-- [ ] Add voice settings UI
-
-### Phase 4: Advanced (Future)
-- [ ] Add Apple Speech Framework as fallback
-- [ ] Integrate neural TTS
-- [ ] Add voice activity detection
-- [ ] Implement continuous conversation mode
+### Phase 7: Advanced Features (Future)
+- [ ] Add Apple Speech Framework as STT fallback
+- [ ] Add voice activity detection (auto-stop recording)
+- [ ] Add continuous conversation mode
+- [ ] Add voice model selection UI
+- [ ] Add Kokoro TTS for multilingual support
 
 ---
 
 ## Resources
 
 - [WhisperKit GitHub](https://github.com/argmaxinc/WhisperKit)
+- [MLX Audio GitHub](https://github.com/Blaizzy/mlx-audio) - TTS, STT, STS for Apple Silicon
+- [Marvis TTS on HuggingFace](https://huggingface.co/Marvis-AI/marvis-tts-250m-v0.1)
 - [Apple Speech Framework Docs](https://developer.apple.com/documentation/speech)
 - [AVSpeechSynthesizer Docs](https://developer.apple.com/documentation/avfaudio/avspeechsynthesizer)
 - [MLX Swift Examples](https://github.com/ml-explore/mlx-swift-examples)
+- [WWDC25: Explore LLMs on Apple Silicon with MLX](https://developer.apple.com/videos/play/wwdc2025/298/)

@@ -8,6 +8,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import MLX
 
 @Observable
 @MainActor
@@ -299,6 +300,9 @@ class ChatManager {
                 isGenerating = false
                 generatingConversationID = nil
                 generationTask = nil
+
+                // Clear GPU cache after generation to free memory
+                MLX.GPU.clearCache()
 
                 // Save after generation completes
                 if let conversation = conversations.first(where: { $0.id == conversationId }) {

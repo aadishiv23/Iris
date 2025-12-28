@@ -34,36 +34,6 @@
             endingLineNumber = "494"
             landmarkName = "generate(prompt:config:)"
             landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD - 73598225315f9ae"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "(3) suspend resume partial function for closure #1 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in Iris.MLXService.generate(prompt: Swift.String, config: Iris.MLXService.GenerationConfig) async throws -&gt; Swift.String"
-                  moduleName = "Iris.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "494"
-                  endingLineNumber = "494">
-               </Location>
-               <Location
-                  uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD - df6a1823821c4da4"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "closure #1 (Swift.Array&lt;Swift.Int&gt;) -&gt; MLXLMCommon.GenerateDisposition in closure #1 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in Iris.MLXService.generate(prompt: Swift.String, config: Iris.MLXService.GenerationConfig) async throws -&gt; Swift.String"
-                  moduleName = "Iris.debug.dylib"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "494"
-                  endingLineNumber = "494">
-               </Location>
-            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy

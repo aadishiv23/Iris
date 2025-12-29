@@ -21,105 +21,92 @@ struct ThinkingView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header button - always tappable
-            Button {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "brain")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.purple)
+            headerButton
 
-                    if isStreaming {
-                        ShimmerText("Thinking...")
-                    } else {
-                        Text("Thought for a moment")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                }
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(.purple.opacity(0.1))
-                )
-            }
-            .buttonStyle(.plain)
-
-            // Expandable content
             if isExpanded {
                 thinkingContent
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(isExpanded ? 1 : 0)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isExpanded)
+    }
+
+    private var headerButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                // Animated sparkle icon
+                Image(systemName: isStreaming ? "sparkles" : "sparkle")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .symbolEffect(.pulse.wholeSymbol, options: .repeating, value: isStreaming)
+                    .contentTransition(.symbolEffect(.replace))
+
+                if isStreaming {
+                    Text("Thinking")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    ThinkingPulse()
+                } else {
+                    Text("Thought process")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .opacity(isExpanded ? 0 : 1)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     private var thinkingContent: some View {
-        ScrollView(.vertical, showsIndicators: true) {
+        ScrollView(.vertical, showsIndicators: false) {
             Text(content)
-                .font(.footnote)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 14)
+                .padding(.top, 4)
+                .padding(.bottom, 14)
         }
-        .frame(maxHeight: 200)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.purple.opacity(0.05))
-        )
-        .padding(.top, 4)
+        .frame(maxHeight: 180)
     }
 }
 
-/// Animated text with shimmer/sweep effect.
-struct ShimmerText: View {
-    let text: String
+// MARK: - Streaming Indicator
 
-    @State private var shimmerOffset: CGFloat = -1
-
-    init(_ text: String) {
-        self.text = text
-    }
-
+/// Animated ellipsis for streaming state.
+struct ThinkingPulse: View {
     var body: some View {
-        Text(text)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .overlay {
-                GeometryReader { geo in
-                    LinearGradient(
-                        colors: [
-                            .clear,
-                            .purple.opacity(0.6),
-                            .white.opacity(0.8),
-                            .purple.opacity(0.6),
-                            .clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: geo.size.width * 0.6)
-                    .offset(x: shimmerOffset * geo.size.width * 1.6)
-                    .blendMode(.sourceAtop)
-                }
-            }
-            .mask(Text(text).font(.subheadline))
-            .onAppear {
-                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    shimmerOffset = 1
-                }
-            }
+        TimelineView(.animation(minimumInterval: 0.4)) { context in
+            let phase = Int(context.date.timeIntervalSinceReferenceDate * 2.5) % 4
+            Text(String(repeating: ".", count: phase))
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.tertiary)
+                .frame(width: 20, alignment: .leading)
+        }
     }
 }
 
@@ -177,23 +164,34 @@ struct ThinkingParser {
 
 // MARK: - Previews
 
-#Preview("Thinking - Streaming") {
-    ThinkingView(
-        content: "Let me analyze this problem step by step. First, I need to consider the user's question about SwiftUI animations. This involves understanding the animation system, how state changes trigger redraws, and how to create smooth transitions between states.",
-        isStreaming: true
-    )
+#Preview("Streaming") {
+    VStack(alignment: .leading) {
+        ThinkingView(
+            content: "Let me analyze this step by step. First, I need to consider the user's question about SwiftUI animations...",
+            isStreaming: true
+        )
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding()
 }
 
-#Preview("Thinking - Complete") {
-    ThinkingView(
-        content: "I thought about the best approach for implementing this feature. After considering several options, I decided that using a combination of GeometryReader and preference keys would be the most elegant solution. This allows us to track the scroll position without interfering with the natural scroll behavior, and we can use that information to show or hide UI elements as needed.",
-        isStreaming: false
-    )
+#Preview("Complete") {
+    VStack(alignment: .leading) {
+        ThinkingView(
+            content: "I thought about the best approach for implementing this feature. After considering several options, I decided that using a combination of GeometryReader and preference keys would be the most elegant solution. This allows us to track the scroll position without interfering with the natural scroll behavior.",
+            isStreaming: false
+        )
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding()
 }
 
-#Preview("Shimmer Text") {
-    ShimmerText("Thinking...")
-        .padding()
+#Preview("Pulse Animation") {
+    HStack {
+        Text("Thinking")
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(.secondary)
+        ThinkingPulse()
+    }
+    .padding()
 }

@@ -11,8 +11,8 @@ struct SidebarConversationRow: View {
 
     // MARK: - State
 
-    /// The conversation being represented by this row.
-    let conversation: Conversation
+    /// The conversation metadata being represented by this row.
+    let conversation: ConversationMetadata
 
     /// Tracks whether this particular row is active.
     let isActive: Bool
@@ -28,7 +28,7 @@ struct SidebarConversationRow: View {
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(conversationTitle)
+                Text(conversation.displayTitle)
                     .font(.subheadline.weight(.medium))
                     .lineLimit(1)
                     .foregroundStyle(.primary)
@@ -51,17 +51,6 @@ struct SidebarConversationRow: View {
     }
 
     // MARK: - Private methods
-
-    private var conversationTitle: String {
-        if let firstUserMessage = conversation.messages.first(where: { $0.role == .user }) {
-            let content = firstUserMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if content.count > 28 {
-                return String(content.prefix(28)) + "..."
-            }
-            return content.isEmpty ? "New Chat" : content
-        }
-        return "New Chat"
-    }
 
     private func formatModelName(_ identifier: String) -> String {
         String(identifier.split(separator: "/").last ?? Substring(identifier))

@@ -502,16 +502,6 @@ extension MLXService.ModelPreset: CaseIterable {
     let mlxService = MLXService()
     let chatManager = ChatManager(mlxService: mlxService)
 
-    let previewConversation = Conversation(
-        title: "Preview Chat",
-        messages: [
-            Message(role: .user, content: "Hey Iris, can you summarize WWDC?"),
-            Message(role: .assistant, content: "WWDC is Apple's annual developer conference where they unveil new software and tools.")
-        ]
-    )
-
-    chatManager.conversations = [previewConversation]
-    chatManager.activeConversationID = previewConversation.id
-
-    return ChatView(chatManager: chatManager)
+    // Preview just uses empty state - conversations are loaded async
+    ChatView(chatManager: chatManager)
 }

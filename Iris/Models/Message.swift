@@ -50,6 +50,26 @@ struct Message: Codable, Identifiable {
         self.timestamp = timestamp
         self.metrics = metrics
     }
+
+    /// Returns a copy of this message with attachments offloaded to disk.
+    func withAttachmentsOffloaded() async -> Message {
+        guard !attachments.isEmpty else { return self }
+
+        var offloadedAttachments: [MessageAttachment] = []
+        for attachment in attachments {
+            let offloaded = await attachment.offloadedToDisk()
+            offloadedAttachments.append(offloaded)
+        }
+
+        return Message(
+            id: id,
+            role: role,
+            content: content,
+            attachments: offloadedAttachments,
+            timestamp: timestamp,
+            metrics: metrics
+        )
+    }
 }
 
 /// Metrics captured during LLM generation.
@@ -80,6 +100,7 @@ struct GenerationMetrics: Codable {
 }
 
 /// Attachment payloads that can be sent with a message.
+/// Supports on-disk storage to reduce memory usage.
 struct MessageAttachment: Codable, Identifiable {
     enum AttachmentType: String, Codable {
         case image
@@ -87,8 +108,28 @@ struct MessageAttachment: Codable, Identifiable {
 
     let id: UUID
     let type: AttachmentType
-    let data: Data
     let mimeType: String
+
+    /// Raw data - may be nil if offloaded to disk.
+    private var _data: Data?
+
+    /// Whether the data has been saved to disk.
+    var isOnDisk: Bool
+
+    /// The attachment data. Loads from disk if needed.
+    var data: Data {
+        get {
+            if let data = _data {
+                return data
+            }
+            // Try to load from disk synchronously (for Codable compatibility)
+            // In practice, use loadData() for async loading
+            if isOnDisk, let diskData = loadFromDiskSync() {
+                return diskData
+            }
+            return Data()
+        }
+    }
 
     init(
         id: UUID = UUID(),
@@ -98,7 +139,62 @@ struct MessageAttachment: Codable, Identifiable {
     ) {
         self.id = id
         self.type = type
-        self.data = data
+        self._data = data
         self.mimeType = mimeType
+        self.isOnDisk = false
+    }
+
+    /// Creates an attachment reference that loads data from disk.
+    init(
+        id: UUID,
+        type: AttachmentType,
+        mimeType: String,
+        isOnDisk: Bool
+    ) {
+        self.id = id
+        self.type = type
+        self._data = nil
+        self.mimeType = mimeType
+        self.isOnDisk = isOnDisk
+    }
+
+    /// Saves the attachment data to disk and returns a new attachment with data cleared.
+    func offloadedToDisk() async -> MessageAttachment {
+        guard let data = _data, !isOnDisk else { return self }
+
+        do {
+            _ = try await AttachmentStorageService.shared.save(data: data, id: id)
+            return MessageAttachment(id: id, type: type, mimeType: mimeType, isOnDisk: true)
+        } catch {
+            // Failed to save, keep in memory
+            return self
+        }
+    }
+
+    /// Loads data from disk asynchronously.
+    func loadData() async -> Data? {
+        if let data = _data {
+            return data
+        }
+        if isOnDisk {
+            return await AttachmentStorageService.shared.load(id: id)
+        }
+        return nil
+    }
+
+    /// Synchronous disk load (for Codable getter).
+    private func loadFromDiskSync() -> Data? {
+        let cachesDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let fileURL = cachesDir
+            .appendingPathComponent("Attachments", isDirectory: true)
+            .appendingPathComponent("\(id.uuidString).attachment")
+        return try? Data(contentsOf: fileURL)
+    }
+
+    // MARK: - Codable
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, mimeType, isOnDisk
+        case _data = "data"
     }
 }

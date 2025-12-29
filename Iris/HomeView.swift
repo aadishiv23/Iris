@@ -194,13 +194,13 @@ struct NewChatHero: View {
 }
 
 struct ConversationCard: View {
-    let conversation: Conversation
+    let conversation: ConversationMetadata
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
-                Text(conversationTitle)
+                Text(conversation.displayTitle)
                     .font(.headline)
                     .fontDesign(.serif)
                     .lineLimit(1)
@@ -220,7 +220,7 @@ struct ConversationCard: View {
                     .frame(width: 3, height: 16)
                     .padding(.top, 2)
 
-                Text(conversationPreview)
+                Text(conversation.lastResponsePreview ?? "No messages yet")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -246,14 +246,6 @@ struct ConversationCard: View {
                 .stroke(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.08), lineWidth: 1)
         )
         .shadow(color: colorScheme == .dark ? .clear : .black.opacity(0.05), radius: 8, y: 2)
-    }
-
-    private var conversationTitle: String {
-        conversation.messages.first(where: { $0.role == .user })?.content ?? "New Conversation"
-    }
-
-    private var conversationPreview: String {
-        conversation.messages.last?.content ?? "No messages yet"
     }
 
     private func formatModelName(_ identifier: String) -> String {

@@ -55,8 +55,8 @@ struct ChatConversationView: View {
     /// Follow the streaming assistant response unless user scrolls away
     @State private var followStreaming = false
 
-    /// Delay before starting to follow streaming (allows user message to appear at top first)
-    @State private var delayedFollowStreaming = false
+    /// Tracks when the assistant has started streaming non-empty content
+    @State private var hasAssistantStartedStreaming = false
 
     // MARK: Body
 
@@ -73,8 +73,8 @@ struct ChatConversationView: View {
                     onSend()
                     isInputFocused = false // dismiss keyboard
                     pendingScrollToUserMessageTop = true
-                    delayedFollowStreaming = true
-                    followStreaming = false // Will be enabled after initial scroll
+                    followStreaming = false
+                    hasAssistantStartedStreaming = false
                 },
                 onStop: onStop,
                 onPickImages: onPickImages,
@@ -112,7 +112,7 @@ struct ChatConversationView: View {
                         
                         // Invisible view to scroll to at bottom
                         Color.clear
-                            .frame(height: 20)
+                            .frame(height: bottomSpacerHeight)
                             .id("bottom")
                             .background(
                                 GeometryReader { geo in
@@ -130,6 +130,13 @@ struct ChatConversationView: View {
                 }
                 .coordinateSpace(name: "scroll")
                 .scrollIndicators(.hidden)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 2).onChanged { _ in
+                        if followStreaming {
+                            followStreaming = false
+                        }
+                    }
+                )
                 .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .onPreferenceChange(ScrollOffsetKey.self) { bottomMinY in
                     let distanceFromBottom = max(0, bottomMinY - scrollGeo.size.height)
@@ -153,15 +160,7 @@ struct ChatConversationView: View {
                         // Scroll user message to top
                         scrollToMessage(id: lastUserId, proxy: proxy, anchor: .top, animated: true)
                         pendingScrollToUserMessageTop = false
-
-                        // After a brief delay, enable following streaming
-                        if delayedFollowStreaming {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                followStreaming = true
-                                delayedFollowStreaming = false
-                            }
-                        }
-                    } else if isNearBottom && !delayedFollowStreaming {
+                    } else if isNearBottom {
                         scrollToBottom(proxy: proxy, animated: true)
                     }
                 }
@@ -169,17 +168,21 @@ struct ChatConversationView: View {
                     // Only auto-scroll when there's actual content (not on empty placeholder)
                     guard let content = newContent, !content.isEmpty else { return }
 
+                    if messages.last?.role == .assistant {
+                        hasAssistantStartedStreaming = true
+                    }
+
                     // No animation during streaming to prevent jitter
                     if followStreaming {
                         scrollToBottom(proxy: proxy, animated: false)
-                    } else if isNearBottom && !delayedFollowStreaming {
+                    } else if isNearBottom {
                         scrollToBottom(proxy: proxy, animated: false)
                     }
                 }
                 .onChange(of: isGenerating) { _, newValue in
                     if !newValue {
                         followStreaming = false
-                        delayedFollowStreaming = false
+                        hasAssistantStartedStreaming = false
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
@@ -199,6 +202,16 @@ struct ChatConversationView: View {
     
     
     // MARK: Helpers
+
+    private var bottomSpacerHeight: CGFloat {
+        if pendingScrollToUserMessageTop {
+            return 400
+        }
+        if isGenerating && !hasAssistantStartedStreaming {
+            return 400
+        }
+        return 80
+    }
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
         if animated {

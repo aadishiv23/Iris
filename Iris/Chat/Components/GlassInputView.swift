@@ -207,7 +207,7 @@ struct SendButton: View {
     var body: some View {
          Button(action: isGenerating ? onStop : onSend) {
              ZStack {
-                 Circle()
+                 RoundedRectangle(cornerRadius: isGenerating ? 12 : 22, style: .continuous)
                      .fill(.clear)
                      .glassEffect(
                          .regular
@@ -218,12 +218,14 @@ struct SendButton: View {
                  Image(systemName: isGenerating ? "stop.fill" : "arrow.up")
                      .font(.system(size: 18, weight: .bold))
                      .foregroundStyle(isEnabled ? .white : .secondary)
+                     .contentTransition(.symbolEffect(.replace))
              }
              .frame(width: 44, height: 44)
              .contentShape(Circle())
          }
          .buttonStyle(.plain)
          .disabled(!isEnabled)
+         .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isGenerating)
      }
 
      /// Tint color based on current state
@@ -310,4 +312,3 @@ struct PendingImageThumbnail: View {
 //     )
 //     .preferredColorScheme(.dark)
 // }
-

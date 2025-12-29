@@ -16,7 +16,7 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "300"
             endingLineNumber = "300"
-            landmarkName = "shortName"
+            landmarkName = "configuration"
             landmarkType = "24">
          </BreakpointContent>
       </BreakpointProxy>
@@ -24,7 +24,7 @@
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
             uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD"
-            shouldBeEnabled = "Yes"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "Iris/Services/MLXService.swift"
@@ -32,8 +32,38 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "494"
             endingLineNumber = "494"
-            landmarkName = "generate(prompt:config:)"
+            landmarkName = "loadModel(configuration:shortName:modelType:)"
             landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD - 8405310310cebe49"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "Iris.MLXService.GenerationConfig.init() -&gt; Iris.MLXService.GenerationConfig"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "494"
+                  endingLineNumber = "494">
+               </Location>
+               <Location
+                  uuid = "577B3378-BCC4-4A39-A5C0-BE9DE78443DD - f3ec74d6c6edd9e7"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "default argument 3 of Iris.MLXService.GenerationConfig.init(maxTokens: Swift.Int, temperature: Swift.Float, topP: Swift.Float, systemPrompt: Swift.String) -&gt; Iris.MLXService.GenerationConfig"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "0"
+                  endingLineNumber = "0">
+               </Location>
+            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -48,8 +78,8 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "599"
             endingLineNumber = "599"
-            landmarkName = "generateStream(messages:config:)"
-            landmarkType = "7">
+            landmarkName = "MLXService"
+            landmarkType = "3">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -64,6 +94,222 @@
             endingColumnNumber = "9223372036854775807"
             startingLineNumber = "596"
             endingLineNumber = "596"
+            landmarkName = "generate(prompt:config:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "EACC19E4-35CE-4A25-9382-5792CBE8608B"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "701"
+            endingLineNumber = "701"
+            landmarkName = "generateStream(messages:config:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "B4DE8DED-72A9-49C2-B728-B2DEAF437531"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "707"
+            endingLineNumber = "707"
+            landmarkName = "generateStream(messages:config:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "B4DE8DED-72A9-49C2-B728-B2DEAF437531 - 1908ef40dabd18fa"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "closure #3 (Swift.Array&lt;Swift.Int&gt;) -&gt; MLXLMCommon.GenerateDisposition in closure #3 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in closure #1 () async -&gt; () in closure #1 (Swift.AsyncStream&lt;Swift.String&gt;.Continuation) -&gt; () in Iris.MLXService.generateStream(messages: Swift.Array&lt;Iris.Message&gt;, config: Iris.MLXService.GenerationConfig) -&gt; Swift.AsyncStream&lt;Swift.String&gt;"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "707"
+                  endingLineNumber = "707">
+               </Location>
+               <Location
+                  uuid = "B4DE8DED-72A9-49C2-B728-B2DEAF437531 - d0f50516602c6dc8"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "closure #1 @Swift.MainActor @Sendable () async -&gt; () in closure #3 (Swift.Array&lt;Swift.Int&gt;) -&gt; MLXLMCommon.GenerateDisposition in closure #3 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in closure #1 () async -&gt; () in closure #1 (Swift.AsyncStream&lt;Swift.String&gt;.Continuation) -&gt; () in Iris.MLXService.generateStream(messages: Swift.Array&lt;Iris.Message&gt;, config: Iris.MLXService.GenerationConfig) -&gt; Swift.AsyncStream&lt;Swift.String&gt;"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "707"
+                  endingLineNumber = "707">
+               </Location>
+               <Location
+                  uuid = "B4DE8DED-72A9-49C2-B728-B2DEAF437531 - 3600fe1729d7f9ee"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(1) suspend resume partial function for closure #1 @Swift.MainActor @Sendable () async -&gt; () in closure #3 (Swift.Array&lt;Swift.Int&gt;) -&gt; MLXLMCommon.GenerateDisposition in closure #3 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in closure #1 () async -&gt; () in closure #1 (Swift.AsyncStream&lt;Swift.String&gt;.Continuation) -&gt; () in Iris.MLXService.generateStream(messages: Swift.Array&lt;Iris.Message&gt;, config: Iris.MLXService.GenerationConfig) -&gt; Swift.AsyncStream&lt;Swift.String&gt;"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "707"
+                  endingLineNumber = "707">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "C287AE8D-D742-4BA7-86EA-E918D1C3D18A"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "712"
+            endingLineNumber = "712"
+            landmarkName = "generateStream(messages:config:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "C287AE8D-D742-4BA7-86EA-E918D1C3D18A - 1908ef40dabd19b4"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "closure #3 (Swift.Array&lt;Swift.Int&gt;) -&gt; MLXLMCommon.GenerateDisposition in closure #3 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in closure #1 () async -&gt; () in closure #1 (Swift.AsyncStream&lt;Swift.String&gt;.Continuation) -&gt; () in Iris.MLXService.generateStream(messages: Swift.Array&lt;Iris.Message&gt;, config: Iris.MLXService.GenerationConfig) -&gt; Swift.AsyncStream&lt;Swift.String&gt;"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "713"
+                  endingLineNumber = "713">
+               </Location>
+               <Location
+                  uuid = "C287AE8D-D742-4BA7-86EA-E918D1C3D18A - bfcd44093877ba81"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "closure #2 @Swift.MainActor @Sendable () async -&gt; () in closure #3 (Swift.Array&lt;Swift.Int&gt;) -&gt; MLXLMCommon.GenerateDisposition in closure #3 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in closure #1 () async -&gt; () in closure #1 (Swift.AsyncStream&lt;Swift.String&gt;.Continuation) -&gt; () in Iris.MLXService.generateStream(messages: Swift.Array&lt;Iris.Message&gt;, config: Iris.MLXService.GenerationConfig) -&gt; Swift.AsyncStream&lt;Swift.String&gt;"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "713"
+                  endingLineNumber = "713">
+               </Location>
+               <Location
+                  uuid = "C287AE8D-D742-4BA7-86EA-E918D1C3D18A - 3600fe1729d7f8a0"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "(1) suspend resume partial function for closure #2 @Swift.MainActor @Sendable () async -&gt; () in closure #3 (Swift.Array&lt;Swift.Int&gt;) -&gt; MLXLMCommon.GenerateDisposition in closure #3 @Sendable (MLXLMCommon.ModelContext) async throws -&gt; MLXLMCommon.GenerateResult in closure #1 () async -&gt; () in closure #1 (Swift.AsyncStream&lt;Swift.String&gt;.Continuation) -&gt; () in Iris.MLXService.generateStream(messages: Swift.Array&lt;Iris.Message&gt;, config: Iris.MLXService.GenerationConfig) -&gt; Swift.AsyncStream&lt;Swift.String&gt;"
+                  moduleName = "Iris.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/a.malhotra/Personal/Iris/Iris/Services/MLXService.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "713"
+                  endingLineNumber = "713">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "E7346BB1-B77F-42D1-99CE-43AD4F4EF6DA"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "717"
+            endingLineNumber = "717"
+            landmarkName = "generateStream(messages:config:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "742F23E9-E4E1-4F90-9B00-FECF56057D62"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "729"
+            endingLineNumber = "729"
+            landmarkName = "generateStream(messages:config:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "3D357EA5-4B61-49AE-A3C3-9BC45B4090B4"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "722"
+            endingLineNumber = "722"
+            landmarkName = "generateStream(messages:config:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "4F10A42A-EEE1-4AB9-9057-F659A86C66A7"
+            shouldBeEnabled = "No"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "725"
+            endingLineNumber = "725"
+            landmarkName = "generateStream(messages:config:)"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "54BDB5BD-B74B-4B50-B171-AEB7A3A045EF"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Iris/Services/MLXService.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "739"
+            endingLineNumber = "739"
             landmarkName = "generateStream(messages:config:)"
             landmarkType = "7">
          </BreakpointContent>

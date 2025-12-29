@@ -67,8 +67,9 @@ class ChatManager {
         // Initialize storage service
         do {
             self.storageService = try ConversationStorageService()
+            Logger.info("ChatManager initialized with storage service", category: "Chat")
         } catch {
-            print("[ChatManager] Failed to initialize storage: \(error)")
+            Logger.error("Failed to initialize storage: \(error)", category: "Chat")
             self.storageService = nil
         }
 
@@ -85,7 +86,7 @@ class ChatManager {
         defer { isLoadingConversations = false }
 
         guard let storageService else {
-            // Fallback to in-memory only
+            Logger.warning("No storage service, using in-memory conversations only", category: "Chat")
             let initial = Conversation()
             conversations.append(initial)
             activeConversationID = initial.id
@@ -94,6 +95,7 @@ class ChatManager {
 
         do {
             let loaded = try await storageService.loadAllConversations()
+            Logger.info("Loaded \(loaded.count) conversations from storage", category: "Chat")
 
             if loaded.isEmpty {
                 // No saved conversations, create initial one
@@ -106,7 +108,7 @@ class ChatManager {
                 activeConversationID = nil
             }
         } catch {
-            print("[ChatManager] Failed to load conversations: \(error)")
+            Logger.error("Failed to load conversations: \(error)", category: "Chat")
             // Fallback to empty state with one new conversation
             let initial = Conversation()
             conversations.append(initial)
@@ -143,13 +145,31 @@ class ChatManager {
 
         conversations.insert(newConversation, at: 0)
         activeConversationID = newConversation.id
+        Logger.activeConversationID = newConversation.id
+
+        Logger.info("Created new conversation", category: "Chat", metadata: [
+            "conversationID": newConversation.id.uuidString,
+            "modelIdentifier": modelId ?? "none"
+        ])
 
         // Save immediately
         saveConversation(newConversation)
     }
 
     func selectConversation(_ id: UUID) {
-        guard let conversation = conversations.first(where: { $0.id == id }) else { return }
+        guard let conversation = conversations.first(where: { $0.id == id }) else {
+            Logger.warning("Attempted to select non-existent conversation: \(id)", category: "Chat")
+            return
+        }
+
+        Logger.info("Selecting conversation", category: "Chat", metadata: [
+            "conversationID": id.uuidString,
+            "messageCount": String(conversation.messages.count),
+            "modelIdentifier": conversation.modelIdentifier ?? "none"
+        ])
+
+        // Set active conversation for logging context
+        Logger.activeConversationID = id
 
         let currentModelId = mlxService.modelIdentifier
         let conversationModelId = conversation.modelIdentifier
@@ -157,6 +177,10 @@ class ChatManager {
         // Check if model switch is needed
         if let conversationModelId,
            conversationModelId != currentModelId {
+            Logger.info("Model mismatch detected, prompting for switch", category: "Chat", metadata: [
+                "currentModel": currentModelId ?? "none",
+                "conversationModel": conversationModelId
+            ])
             // Model mismatch - prompt user
             pendingModelSwitch = PendingModelSwitch(
                 conversationID: id,
@@ -170,43 +194,71 @@ class ChatManager {
 
     /// Called after user confirms model switch or decides to proceed without switching.
     func confirmConversationSelection(loadModel: Bool) {
-        guard let pending = pendingModelSwitch else { return }
+        guard let pending = pendingModelSwitch else {
+            Logger.warning("confirmConversationSelection called without pending switch", category: "Chat")
+            return
+        }
+
+        Logger.info("Confirming conversation selection", category: "Chat", metadata: [
+            "loadModel": String(loadModel),
+            "conversationID": pending.conversationID.uuidString,
+            "requiredModel": pending.requiredModelIdentifier
+        ])
 
         if loadModel {
             // Load the required model
             Task { @MainActor in
                 await loadModelForConversation(pending.requiredModelIdentifier)
                 activeConversationID = pending.conversationID
+                Logger.activeConversationID = pending.conversationID
                 pendingModelSwitch = nil
+                Logger.info("Conversation activated after model load", category: "Chat")
             }
         } else {
             // User chose to proceed without loading model
+            Logger.warning("User proceeding without loading required model", category: "Chat")
             activeConversationID = pending.conversationID
+            Logger.activeConversationID = pending.conversationID
             pendingModelSwitch = nil
         }
     }
 
     func cancelConversationSelection() {
+        Logger.info("Conversation selection cancelled", category: "Chat")
         pendingModelSwitch = nil
     }
 
     private func loadModelForConversation(_ modelIdentifier: String) async {
+        Logger.info("Loading model for conversation", category: "Chat", metadata: [
+            "modelIdentifier": modelIdentifier
+        ])
+
         // Find matching preset by identifier
         if let preset = MLXService.ModelPreset.allCases.first(where: { preset in
             preset.configurationId == modelIdentifier
         }) {
+            Logger.debug("Found preset for model: \(preset.displayName)", category: "Chat")
             do {
                 try await mlxService.loadModel(preset)
+                Logger.info("Model loaded successfully for conversation", category: "Chat")
             } catch {
-                print("[ChatManager] Failed to load model: \(error)")
+                Logger.error("Failed to load model: \(error)", category: "Chat", metadata: [
+                    "modelIdentifier": modelIdentifier,
+                    "error": String(describing: error)
+                ])
                 alertMessage = "Failed to load model: \(error.localizedDescription)"
             }
         } else {
             // Try loading as custom HuggingFace ID
+            Logger.debug("No preset found, trying as HuggingFace ID", category: "Chat")
             do {
                 try await mlxService.loadModel(hfID: modelIdentifier)
+                Logger.info("Custom model loaded successfully", category: "Chat")
             } catch {
-                print("[ChatManager] Failed to load custom model: \(error)")
+                Logger.error("Failed to load custom model: \(error)", category: "Chat", metadata: [
+                    "modelIdentifier": modelIdentifier,
+                    "error": String(describing: error)
+                ])
                 alertMessage = "Failed to load model: \(error.localizedDescription)"
             }
         }
@@ -242,24 +294,38 @@ class ChatManager {
         let supportsImages = mlxService.currentPreset?.supportsImages == true
         let filteredAttachments = supportsImages ? attachments : []
 
+        Logger.info("Sending message", category: "Chat", metadata: [
+            "textLength": String(text.count),
+            "attachmentCount": String(attachments.count),
+            "supportsImages": String(supportsImages),
+            "model": mlxService.currentPreset?.displayName ?? mlxService.modelIdentifier ?? "none"
+        ])
+
         if !supportsImages && !attachments.isEmpty {
+            Logger.warning("Images not supported by current model, stripping attachments", category: "Chat")
             alertMessage = "Images are only supported with Gemma 3n models."
         }
-        
+
         guard (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !filteredAttachments.isEmpty),
               let conversationId = activeConversationID,
               let index = conversations.firstIndex(where: { $0.id == conversationId }) else {
+            Logger.warning("Cannot send: empty message or no active conversation", category: "Chat")
             return
         }
-        
+
+        // Set active conversation for logging context
+        Logger.activeConversationID = conversationId
+
         // Cancel any existing generation
         if isGenerating {
+            Logger.info("Cancelling existing generation before new message", category: "Chat")
             cancelGeneration()
         }
 
         // Update model identifier on conversation if not set
         if conversations[index].modelIdentifier == nil {
             conversations[index].modelIdentifier = mlxService.modelIdentifier
+            Logger.debug("Set conversation model identifier: \(mlxService.modelIdentifier ?? "none")", category: "Chat")
         }
 
         // Add user message with animation
@@ -268,6 +334,11 @@ class ChatManager {
             conversations[index].messages.append(userMessage)
             conversations[index].updatedAt = Date()
         }
+
+        Logger.debug("User message added to conversation", category: "Chat", metadata: [
+            "messageID": userMessage.id.uuidString,
+            "conversationMessageCount": String(conversations[index].messages.count)
+        ])
 
         // Save after user message
         saveConversation(conversations[index])
@@ -282,7 +353,12 @@ class ChatManager {
         // Start generation
         isGenerating = true
         generatingConversationID = activeConversationID
-        
+
+        Logger.info("Starting generation task", category: "Chat", metadata: [
+            "conversationID": conversationId.uuidString,
+            "assistantMessageID": assistantMessageId.uuidString
+        ])
+
         generationTask = Task {
             await performGeneration(
                 conversationId: conversationId,
@@ -295,6 +371,10 @@ class ChatManager {
         conversationId: UUID,
         assistantMessageId: UUID
     ) async {
+        Logger.debug("performGeneration started", category: "Chat", metadata: [
+            "conversationID": conversationId.uuidString
+        ])
+
         defer {
             if generatingConversationID == conversationId {
                 isGenerating = false
@@ -302,48 +382,71 @@ class ChatManager {
                 generationTask = nil
 
                 // Clear GPU cache after generation to free memory
+                Logger.debug("Clearing GPU cache after generation", category: "Chat")
                 MLX.GPU.clearCache()
 
                 // Save after generation completes
                 if let conversation = conversations.first(where: { $0.id == conversationId }) {
                     saveConversation(conversation)
+                    Logger.debug("Conversation saved after generation", category: "Chat")
                 }
             }
         }
 
         guard let index = conversations.firstIndex(where: { $0.id == conversationId }) else {
+            Logger.error("Conversation not found during generation", category: "Chat", metadata: [
+                "conversationID": conversationId.uuidString
+            ])
             isGenerating = false
             return
         }
-        
+
         // Get conversation history for context
-        // we index into conversatoins as there is always a chance that user switches conversation mid generation
+        // we index into conversations as there is always a chance that user switches conversation mid generation
         let messages = conversations[index].messages.filter { $0.id != assistantMessageId }
-        
+
+        Logger.info("Beginning stream generation", category: "Chat", metadata: [
+            "historyMessageCount": String(messages.count)
+        ])
+
         var previousLength = 0
         var fullResponse = ""
-        
+        var tokenUpdates = 0
+
         for await fullText in mlxService.generateStream(messages: messages) {
             // Check for cancellation
-            if Task.isCancelled { break }
+            if Task.isCancelled {
+                Logger.info("Generation cancelled mid-stream", category: "Chat")
+                break
+            }
 
             // Check we are still generating for this conversation
-            guard generatingConversationID == conversationId else { break }
+            guard generatingConversationID == conversationId else {
+                Logger.info("Conversation switched during generation, stopping", category: "Chat")
+                break
+            }
 
             // Extract only new part
             let newText = String(fullText.dropFirst(previousLength))
             previousLength = fullText.count
             fullResponse += newText
+            tokenUpdates += 1
 
             // Update with assistant message
             updateAssistantMessage(conversationId: conversationId, messageId: assistantMessageId, content: fullResponse)
         }
+
+        Logger.info("Stream generation finished", category: "Chat", metadata: [
+            "responseLength": String(fullResponse.count),
+            "tokenUpdates": String(tokenUpdates)
+        ])
 
         // Capture metrics after generation completes
         let metrics = mlxService.lastGenerationMetrics
 
         // Handle empty responses
         if fullResponse.isEmpty && !Task.isCancelled {
+            Logger.warning("Empty response generated", category: "Chat")
             updateAssistantMessage(conversationId: conversationId, messageId: assistantMessageId, content: "Sorry, I couldn't generate a response.", metrics: metrics)
         } else {
             // Final update with metrics

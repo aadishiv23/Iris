@@ -13,6 +13,7 @@ struct HomeView: View {
 
     let chatManager: ChatManager
     @State private var showModelManager = false
+    @State private var showDebugLogs = false
     
     // MARK: - Body
 
@@ -95,12 +96,24 @@ struct HomeView: View {
                             .foregroundStyle(.primary)
                     }
                 }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showDebugLogs = true
+                    } label: {
+                        Image(systemName: "ladybug")
+                            .foregroundStyle(.primary)
+                    }
+                }
             }
             .sheet(isPresented: $showModelManager) {
                 ModelManagerView(mlxService: chatManager.mlxService)
                     #if os(macOS)
                     .frame(minWidth: 450, minHeight: 400)
                     #endif
+            }
+            .sheet(isPresented: $showDebugLogs) {
+                DebugLogView()
             }
             .alert(
                 "Switch Model?",

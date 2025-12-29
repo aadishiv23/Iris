@@ -45,18 +45,18 @@ struct ChatConversationView: View {
 
     /// Whether to show the scroll-to-bottom button
     @State private var showScrollButton = false
-    
+
     /// Whether the user is near the bottom of the list
     @State private var isNearBottom = true
-    
+
     /// Trigger to align the last user message to the top on send
     @State private var pendingScrollToUserMessageTop = false
 
     /// Follow the streaming assistant response unless user scrolls away
     @State private var followStreaming = false
 
-    /// When true, keeps user message pinned at top (ChatGPT-style) until user scrolls
-    @State private var userMessagePinnedToTop = false
+    /// Delay before starting to follow streaming (allows user message to appear at top first)
+    @State private var delayedFollowStreaming = false
 
     // MARK: Body
 
@@ -73,9 +73,8 @@ struct ChatConversationView: View {
                     onSend()
                     isInputFocused = false // dismiss keyboard
                     pendingScrollToUserMessageTop = true
-                    // Don't follow streaming - keep user message at top (ChatGPT-style)
-                    followStreaming = false
-                    userMessagePinnedToTop = true
+                    delayedFollowStreaming = true
+                    followStreaming = false // Will be enabled after initial scroll
                 },
                 onStop: onStop,
                 onPickImages: onPickImages,
@@ -131,6 +130,7 @@ struct ChatConversationView: View {
                 }
                 .coordinateSpace(name: "scroll")
                 .scrollIndicators(.hidden)
+                .scrollEdgeEffectStyle(.soft, for: .bottom)
                 .onPreferenceChange(ScrollOffsetKey.self) { bottomMinY in
                     let distanceFromBottom = max(0, bottomMinY - scrollGeo.size.height)
                     let nearBottom = distanceFromBottom <= 80
@@ -150,43 +150,42 @@ struct ChatConversationView: View {
                 .onChange(of: messages.count) { _, _ in
                     if pendingScrollToUserMessageTop,
                        let lastUserId = messages.last(where: { $0.role == .user })?.id {
+                        // Scroll user message to top
                         scrollToMessage(id: lastUserId, proxy: proxy, anchor: .top, animated: true)
                         pendingScrollToUserMessageTop = false
-                    } else if isNearBottom {
-                        // Don't auto-scroll when an empty assistant placeholder is added
-                        // This keeps the user message pinned at top until content starts streaming
-                        let isEmptyAssistantPlaceholder = messages.last?.role == .assistant &&
-                                                          messages.last?.content.isEmpty == true
-                        if !isEmptyAssistantPlaceholder {
-                            scrollToBottom(proxy: proxy, animated: true)
+
+                        // After a brief delay, enable following streaming
+                        if delayedFollowStreaming {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                followStreaming = true
+                                delayedFollowStreaming = false
+                            }
                         }
+                    } else if isNearBottom && !delayedFollowStreaming {
+                        scrollToBottom(proxy: proxy, animated: true)
                     }
                 }
                 .onChange(of: messages.last?.content) { _, newContent in
                     // Only auto-scroll when there's actual content (not on empty placeholder)
                     guard let content = newContent, !content.isEmpty else { return }
 
-                    // Don't auto-scroll if user message is pinned to top (ChatGPT-style)
-                    guard !userMessagePinnedToTop else { return }
-
                     // No animation during streaming to prevent jitter
                     if followStreaming {
                         scrollToBottom(proxy: proxy, animated: false)
-                    } else if isNearBottom {
+                    } else if isNearBottom && !delayedFollowStreaming {
                         scrollToBottom(proxy: proxy, animated: false)
                     }
                 }
                 .onChange(of: isGenerating) { _, newValue in
                     if !newValue {
                         followStreaming = false
-                        userMessagePinnedToTop = false
+                        delayedFollowStreaming = false
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if showScrollButton {
                         ScrollToBottomButton {
                             scrollToBottom(proxy: proxy)
-                            userMessagePinnedToTop = false
                             followStreaming = isGenerating
                         }
                         .padding(.trailing, 14)

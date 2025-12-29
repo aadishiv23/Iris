@@ -80,11 +80,48 @@ class MLXService {
     private var tokenCount: Int = 0
 
     // MARK: - Initializer
-    
+
     init() {
-        // Set GPU Cache Limit, 6GB for now
-        MLX.GPU.set(cacheLimit: 4 * 1024 * 1024 * 1024)
+        // Set GPU Cache Limit based on device
+        // iPhone has limited memory - use 1.5GB max to leave room for the model
+        #if os(iOS)
+        let cacheLimit: Int = 1536 * 1024 * 1024  // 1.5GB for iPhone
+        #else
+        let cacheLimit: Int = 4 * 1024 * 1024 * 1024  // 4GB for Mac
+        #endif
+        MLX.GPU.set(cacheLimit: cacheLimit)
+        Logger.info("MLXService initialized with GPU cache limit: \(cacheLimit / (1024*1024))MB", category: "MLX")
+
+        // Set up memory pressure monitoring
+        setupMemoryPressureMonitoring()
+
         refreshCachedModels()
+    }
+
+    /// Sets up monitoring for system memory pressure warnings
+    private func setupMemoryPressureMonitoring() {
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Logger.warning("Received memory warning from system!", category: "MLX")
+            self?.handleMemoryWarning()
+        }
+        #endif
+    }
+
+    /// Responds to memory pressure by clearing caches
+    private func handleMemoryWarning() {
+        Logger.warning("Handling memory warning - clearing GPU cache", category: "MLX")
+        MLX.GPU.clearCache()
+
+        // Log current state
+        Logger.info("Memory warning handled", category: "MLX", metadata: [
+            "isGenerating": String(currentGenerationTask != nil),
+            "modelLoaded": String(isModelLoaded)
+        ])
     }
 
     // MARK: - Model Cache Management
@@ -336,6 +373,28 @@ class MLXService {
                 return .llm
             }
         }
+
+        /// Returns true if this model is memory-intensive and may crash on iPhone
+        var isMemoryIntensive: Bool {
+            switch self {
+            case .qwen3_VL_4B_instruct_4bit, .qwen3_VL_4B_thinking_3bit,
+                 .llama3_2_3B, .phi4bit, .qwen3_4b_4bit,
+                 .gemma3n_E4B_it_lm_4bit:
+                return true
+            default:
+                return false
+            }
+        }
+
+        /// Warning message for memory-intensive models
+        var memoryWarning: String? {
+            guard isMemoryIntensive else { return nil }
+            if modelType == .vlm {
+                return "VLM models require significant memory. May crash on iPhone with long conversations."
+            } else {
+                return "This model requires significant memory. Keep conversations short to avoid crashes."
+            }
+        }
     }
 
     struct CachedModelInfo: Identifiable, Hashable {
@@ -359,6 +418,10 @@ class MLXService {
     
     /// Loads a model from preset
     func loadModel(_ preset: ModelPreset) async throws {
+        Logger.info("Loading model preset: \(preset.displayName)", category: "MLX", metadata: [
+            "modelType": String(describing: preset.modelType),
+            "supportsImages": String(preset.supportsImages)
+        ])
         loadingModelName = preset.displayName
         try await loadModel(
             configuration: preset.configuration,
@@ -384,6 +447,16 @@ class MLXService {
         shortName: String? = nil,
         modelType: ModelPreset.ModelType = .llm
     ) async throws {
+        let configId = configurationIdentifier(configuration) ?? "unknown"
+        Logger.info("Starting model load", category: "MLX", metadata: [
+            "configId": configId,
+            "modelType": String(describing: modelType)
+        ])
+
+        // Clear GPU cache before loading to maximize available memory
+        Logger.debug("Clearing GPU cache before model load", category: "MLX")
+        MLX.GPU.clearCache()
+
         unloadModel()
 
         isLoadingModel = true
@@ -391,6 +464,8 @@ class MLXService {
         isLoadingFromCache = cached
         statusMessage = cached ? "Preparing cached model..." : "Downloading model..."
         downloadProgress = cached ? 1.0 : 0.0
+
+        Logger.debug("Model cache status: \(cached ? "cached" : "needs download")", category: "MLX")
 
         defer {
             isLoadingModel = false
@@ -400,6 +475,8 @@ class MLXService {
 
         do {
             let factory: ModelFactory = modelType == .vlm ? VLMModelFactory.shared : LLMModelFactory.shared
+            Logger.debug("Using factory: \(modelType == .vlm ? "VLM" : "LLM")", category: "MLX")
+
             modelContainer = try await factory.loadContainer(
                 configuration: configuration
             ) { [weak self] progress in
@@ -429,6 +506,12 @@ class MLXService {
                 } else {
                     modelInformation = "\(millions)M parameters"
                 }
+
+                Logger.info("Model loaded successfully", category: "MLX", metadata: [
+                    "parameters": modelInformation ?? "unknown",
+                    "configId": configId
+                ])
+                Logger.logMemoryUsage(context: "After model load")
             }
 
             isModelLoaded = true
@@ -437,6 +520,10 @@ class MLXService {
             currentModelIdentifier = configurationIdentifier(configuration)
             refreshCachedModels()
         } catch {
+            Logger.error("Model load failed: \(error.localizedDescription)", category: "MLX", metadata: [
+                "configId": configId,
+                "error": String(describing: error)
+            ])
             statusMessage = "Failed to load model: \(error.localizedDescription)"
             throw MLXError.modelLoadFailed(error.localizedDescription)
         }
@@ -444,6 +531,10 @@ class MLXService {
     
     /// Unloads the current model and frees memory.
     func unloadModel() {
+        Logger.info("Unloading model", category: "MLX", metadata: [
+            "currentModel": currentModelIdentifier ?? "none"
+        ])
+
         cancelGeneration()
         modelContainer = nil
         isModelLoaded = false
@@ -456,6 +547,11 @@ class MLXService {
         statusMessage = "No model loaded."
         currentModelIdentifier = nil
         isLoadingFromCache = false
+
+        // Clear GPU cache after unloading to free memory
+        MLX.GPU.clearCache()
+        Logger.debug("GPU cache cleared after model unload", category: "MLX")
+
         refreshCachedModels()
     }
     
@@ -548,9 +644,10 @@ class MLXService {
     }
     
     /// Maximum number of messages to keep in conversation history to prevent OOM.
-    /// VLM models use a lower limit due to higher memory requirements.
-    private static let maxLLMHistoryMessages = 20
-    private static let maxVLMHistoryMessages = 10
+    /// VLM models use a much lower limit due to higher memory requirements.
+    /// These are very conservative to prevent crashes on iPhone.
+    private static let maxLLMHistoryMessages = 10
+    private static let maxVLMHistoryMessages = 4  // VLM is extremely memory hungry
 
     /// Generates with conversation history
     func generateStream(
@@ -563,12 +660,24 @@ class MLXService {
       firstTokenTime = nil
       tokenCount = 0
 
+      let modelName = currentPreset?.displayName ?? currentModelIdentifier ?? "unknown"
+      let isVLM = currentPreset?.modelType == .vlm
+
+      Logger.logMemoryUsage(context: "Before generation")
+      Logger.info("Starting generation", category: "Generation", metadata: [
+          "model": modelName,
+          "isVLM": String(isVLM),
+          "messageCount": String(messages.count),
+          "maxTokens": String(config.maxTokens)
+      ])
+
       return AsyncStream { continuation in
           // Flag to ensure finish() is only called once (prevents race conditions)
           let finishOnce = FinishOnce(continuation: continuation)
 
           currentGenerationTask = Task { [weak self] in
               guard let self, let container = modelContainer else {
+                  Logger.error("Generation failed: model container is nil", category: "Generation")
                   finishOnce.finish()
                   return
               }
@@ -576,6 +685,7 @@ class MLXService {
               do {
                   // Clear GPU cache before generation to free memory
                   MLX.GPU.clearCache()
+                  Logger.debug("GPU cache cleared", category: "Generation")
 
                   // Truncate conversation history to prevent OOM
                   // VLM models get a lower limit due to higher memory requirements
@@ -587,7 +697,7 @@ class MLXService {
                   if messages.count > maxMessages {
                       // Keep the most recent messages
                       truncatedMessages = Array(messages.suffix(maxMessages))
-                      NSLog("[MLXService] Truncated history from %d to %d messages", messages.count, truncatedMessages.count)
+                      Logger.warning("Truncated history from \(messages.count) to \(truncatedMessages.count) messages", category: "Generation")
                   } else {
                       truncatedMessages = messages
                   }
@@ -595,6 +705,7 @@ class MLXService {
                   // Find the last user message index (for image attachment)
                   let lastUserIndex = truncatedMessages.lastIndex { $0.role == .user }
 
+                  var imageCount = 0
                   let chatMessages: [Chat.Message] = [
                       .system(config.systemPrompt)
                   ] + truncatedMessages.enumerated().map { index, message in
@@ -617,10 +728,11 @@ class MLXService {
                                     let uiImage = UIImage(data: attachment.data),
                                     let resized = uiImage.resizedForVLM(maxDimension: 224),
                                     let ciImage = CIImage(image: resized) else {
-                                  NSLog("[MLXService] Failed to process image attachment")
+                                  Logger.warning("Failed to process image attachment", category: "Generation")
                                   return nil
                               }
-                              NSLog("[MLXService] Processed image: %@", "\(resized.size)")
+                              imageCount += 1
+                              Logger.debug("Processed image: \(resized.size)", category: "Generation")
                               return .ciImage(ciImage)
                           }
                       } else {
@@ -645,19 +757,19 @@ class MLXService {
                       )
                   }
 
-                  NSLog("[MLXService] Created %d chat messages", chatMessages.count)
+                  Logger.info("Prepared \(chatMessages.count) chat messages with \(imageCount) images", category: "Generation")
 
                   let userInput = UserInput(
                       chat: chatMessages,
                       processing: .init(resize: .init(width: 224, height: 224))
                   )
 
-                  NSLog("[MLXService] Starting model.perform...")
+                  Logger.debug("Starting model.perform...", category: "Generation")
 
                   _ = try await container.perform { [weak self] context in
-                      NSLog("[MLXService] Preparing input...")
+                      Task { @MainActor in Logger.debug("Preparing input via processor...", category: "Generation") }
                       let input = try await context.processor.prepare(input: userInput)
-                      NSLog("[MLXService] Input prepared, starting generation...")
+                      Task { @MainActor in Logger.debug("Input prepared, starting token generation...", category: "Generation") }
 
                       return try MLXLMCommon.generate(
                           input: input,
@@ -665,6 +777,7 @@ class MLXService {
                           context: context
                       ) { tokens in
                           if Task.isCancelled {
+                              Task { @MainActor in Logger.info("Generation cancelled by user", category: "Generation") }
                               finishOnce.finish()
                               return .stop
                           }
@@ -674,6 +787,7 @@ class MLXService {
                               guard let self else { return }
                               if self.firstTokenTime == nil {
                                   self.firstTokenTime = Date()
+                                  Logger.debug("First token received", category: "Generation")
                               }
                               self.tokenCount = tokens.count
                           }
@@ -685,7 +799,8 @@ class MLXService {
                       }
                   }
 
-                  print("[MLXService] Generation complete")
+                  Logger.info("Generation complete", category: "Generation")
+                  Logger.logMemoryUsage(context: "After generation")
 
                   // Calculate final metrics
                   await MainActor.run { [weak self] in
@@ -695,7 +810,10 @@ class MLXService {
                   finishOnce.finish()
 
               } catch {
-                  print("[MLXService] Error during generation: \(error)")
+                  Logger.error("Generation error: \(error.localizedDescription)", category: "Generation", metadata: [
+                      "errorType": String(describing: type(of: error)),
+                      "errorDetails": String(describing: error)
+                  ])
                   finishOnce.finish()
               }
           }
@@ -723,7 +841,10 @@ class MLXService {
 
     /// Finalizes and stores generation metrics.
     private func finalizeMetrics() {
-        guard let startTime = generationStartTime else { return }
+        guard let startTime = generationStartTime else {
+            Logger.warning("Cannot finalize metrics: no start time recorded", category: "Generation")
+            return
+        }
 
         let endTime = Date()
         let totalTime = endTime.timeIntervalSince(startTime)
@@ -744,12 +865,20 @@ class MLXService {
             totalTokens: tokenCount > 0 ? tokenCount : nil,
             totalTimeSeconds: totalTime > 0 ? totalTime : nil
         )
+
+        Logger.info("Generation metrics finalized", category: "Generation", metadata: [
+            "totalTokens": String(tokenCount),
+            "totalTime": String(format: "%.2fs", totalTime),
+            "tokensPerSecond": tokensPerSecond.map { String(format: "%.1f", $0) } ?? "n/a",
+            "ttft": ttft.map { String(format: "%.0fms", $0) } ?? "n/a"
+        ])
     }
 
     /// Cancels any ongoing generation
     func cancelGeneration() {
-      currentGenerationTask?.cancel()
-      currentGenerationTask = nil
+        Logger.info("Cancelling generation", category: "Generation")
+        currentGenerationTask?.cancel()
+        currentGenerationTask = nil
     }
 }
 
